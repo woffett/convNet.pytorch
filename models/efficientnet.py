@@ -107,7 +107,7 @@ class EfficientNet(nn.Module):
     def __init__(self, width_coeff=1, depth_coeff=1, resolution=224,
                  se_ratio=0.25, regime='cosine', num_classes=1000,
                  scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2,
-                 num_epochs=200, hard_act=False, use_cifar=False):
+                 num_epochs=200, hard_act=False, weight_decay=1e-5, use_cifar=False):
         super(EfficientNet, self).__init__()
 
         def channels(base_channels, coeff=width_coeff, divisor=8, min_channels=None):

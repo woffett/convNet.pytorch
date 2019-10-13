@@ -24,7 +24,9 @@ $PYTHON $MAIN \
 	--dataset cifar10 \
 	--model efficientnet \
 	--model-config  '{"resolution": 32, "num_classes": 10, "use_cifar": True}' \
+	--input-size 32 \
 	--dtype float \
+	--autoaugment \
 	--device cuda \
 	--epochs 200 \
 	--batch-size $BATCH \
