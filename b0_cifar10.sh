@@ -19,7 +19,7 @@ BATCH=128
 DECAY=5e-4
 
 $PYTHON $MAIN \
-	--results-dir OUTPUT \
+	--results-dir $OUTPUT \
 	--datasets-dir $DATA \
 	--dataset cifar10 \
 	--model efficientnet \
