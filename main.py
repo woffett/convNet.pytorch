@@ -179,7 +179,8 @@ def main_worker(args):
 
     # create model
     model = models.__dict__[args.model]
-    model_config = {'dataset': args.dataset}
+    if args.model != 'efficientnet':
+        model_config = {'dataset': args.dataset}
 
     if args.model_config is not '':
         model_config = dict(model_config, **literal_eval(args.model_config))
