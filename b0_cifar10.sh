@@ -23,7 +23,7 @@ $PYTHON $MAIN \
 	--datasets-dir $DATA \
 	--dataset cifar10 \
 	--model efficientnet \
-	--model-config  {'resolution': 32, num_classes=10, use_cifar=True} \
+	--model-config  '{"resolution": 32, "num_classes": 10, "use_cifar": True}' \
 	--dtype float \
 	--device cuda \
 	--epochs 200 \
