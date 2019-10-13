@@ -110,6 +110,9 @@ class EfficientNet(nn.Module):
                  num_epochs=200, hard_act=False, weight_decay=1e-5, use_cifar=False):
         super(EfficientNet, self).__init__()
 
+        if use_cifar:
+            resolution = 32
+
         def channels(base_channels, coeff=width_coeff, divisor=8, min_channels=None):
             if coeff == 1:
                 return base_channels
