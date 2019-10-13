@@ -249,9 +249,12 @@ def main_worker(args):
         optimizer.load_state_dict(optim_state_dict)
 
     trainer = Trainer(model, criterion, optimizer,
-                      device_ids=args.device_ids, device=args.device, dtype=dtype, print_freq=args.print_freq,
-                      distributed=args.distributed, local_rank=args.local_rank, mixup=args.mixup, cutmix=args.cutmix,
-                      loss_scale=args.loss_scale, grad_clip=args.grad_clip,  adapt_grad_norm=args.adapt_grad_norm)
+                      device_ids=args.device_ids, device=args.device,
+                      dtype=dtype, print_freq=args.print_freq,
+                      distributed=args.distributed, local_rank=args.local_rank,
+                      mixup=args.mixup, cutmix=args.cutmix,
+                      loss_scale=args.loss_scale, grad_clip=args.grad_clip,
+                      adapt_grad_norm=args.adapt_grad_norm)
     if args.tensorwatch:
         trainer.set_watcher(filename=path.abspath(path.join(save_path, 'tensorwatch.log')),
                             port=args.tensorwatch_port)
@@ -259,9 +262,16 @@ def main_worker(args):
     # Evaluation Data loading code
     args.eval_batch_size = args.eval_batch_size if args.eval_batch_size > 0 else args.batch_size
     val_data = DataRegime(getattr(model, 'data_eval_regime', None),
-                          defaults={'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'val', 'augment': False,
-                                    'input_size': args.input_size, 'batch_size': args.eval_batch_size, 'shuffle': False,
-                                    'num_workers': args.workers, 'pin_memory': True, 'drop_last': False})
+                          defaults={'datasets_path': args.datasets_dir,
+                                    'name': args.dataset,
+                                    'split': 'val',
+                                    'augment': False,
+                                    'input_size': args.input_size,
+                                    'batch_size': args.eval_batch_size,
+                                    'shuffle': False,
+                                    'num_workers': args.workers,
+                                    'pin_memory': True,
+                                    'drop_last': False})
 
     if args.evaluate:
         results = trainer.validate(val_data.get_loader())
@@ -269,10 +279,19 @@ def main_worker(args):
         return
 
     # Training Data loading code
-    train_data_defaults = {'datasets_path': args.datasets_dir, 'name': args.dataset, 'split': 'train', 'augment': True,
-                           'input_size': args.input_size,  'batch_size': args.batch_size, 'shuffle': True,
-                           'num_workers': args.workers, 'pin_memory': True, 'drop_last': True,
-                           'distributed': args.distributed, 'duplicates': args.duplicates, 'autoaugment': args.autoaugment,
+    train_data_defaults = {'datasets_path': args.datasets_dir,
+                           'name': args.dataset,
+                           'split': 'train',
+                           'augment': True,
+                           'input_size': args.input_size,
+                           'batch_size': args.batch_size,
+                           'shuffle': True,
+                           'num_workers': args.workers,
+                           'pin_memory': True,
+                           'drop_last': True,
+                           'distributed': args.distributed,
+                           'duplicates': args.duplicates,
+                           'autoaugment': args.autoaugment,
                            'cutout': {'holes': 1, 'length': 16} if args.cutout else None}
 
     if hasattr(model, 'sampled_data_regime'):

@@ -16,6 +16,8 @@ _IMAGENET_PCA = {
     ])
 }
 
+_CIFAR10_STATS = {'mean': [0.4914, 0.4822, 0.4465],
+                   'std': [0.2023, 0.1994, 0.2010]}
 
 def scale_crop(input_size, scale_size=None, num_crops=1, normalize=_IMAGENET_STATS):
     assert num_crops in [1, 5, 10], "num crops must be in {1,5,10}"
@@ -54,7 +56,7 @@ def random_crop(input_size, scale_size=None, padding=None, normalize=_IMAGENET_S
     return T
 
 
-def cifar_autoaugment(input_size, scale_size=None, padding=None, normalize=_IMAGENET_STATS):
+def cifar_autoaugment(input_size, scale_size=None, padding=None, normalize=_CIFAR10_STATS):
     scale_size = scale_size or input_size
     T = transforms.Compose([
         transforms.RandomCrop(scale_size, padding=padding),

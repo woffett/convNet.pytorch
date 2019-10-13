@@ -104,8 +104,10 @@ class MBConvBlock(nn.Sequential):
 
 class EfficientNet(nn.Module):
 
-    def __init__(self, width_coeff=1, depth_coeff=1, resolution=224, se_ratio=0.25, regime='cosine', num_classes=1000,
-                 scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2, num_epochs=200, hard_act=False):
+    def __init__(self, width_coeff=1, depth_coeff=1, resolution=224,
+                 se_ratio=0.25, regime='cosine', num_classes=1000,
+                 scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2,
+                 num_epochs=200, hard_act=False, use_cifar=False):
         super(EfficientNet, self).__init__()
 
         def channels(base_channels, coeff=width_coeff, divisor=8, min_channels=None):
@@ -129,10 +131,11 @@ class EfficientNet(nn.Module):
                     'expansion': expansion, 'kernel_size': kernel_size, 'stride': stride,
                     'padding': padding, 'se_ratio': se_ratio, 'hard_act': hard_act}
 
+        conv_stride = 1 if use_cifar else 2
         stages = [
             config(16, num=1,  expansion=1, kernel_size=3, stride=1),
-            config(24, num=2,  expansion=6, kernel_size=3, stride=2),
-            config(40, num=2,  expansion=6, kernel_size=5, stride=2),
+            config(24, num=2,  expansion=6, kernel_size=3, stride=conv_stride),
+            config(40, num=2,  expansion=6, kernel_size=5, stride=conv_stride),
             config(80, num=3,  expansion=6, kernel_size=3, stride=2),
             config(112, num=3,  expansion=6, kernel_size=5, stride=1),
             config(192, num=4,  expansion=6, kernel_size=5, stride=2),
@@ -146,7 +149,7 @@ class EfficientNet(nn.Module):
             layers.append(MBConvBlock(in_channel, **stages[i]))
 
         self.features = nn.Sequential(
-            ConvBNAct(3, channels(32), 3, 2, 1, hard_act=hard_act),
+            ConvBNAct(3, channels(32), 3, conv_stride, 1, hard_act=hard_act),
             *layers,
             ConvBNAct(channels(320), channels(1280), 1),
             nn.AdaptiveAvgPool2d(1),
@@ -187,6 +190,9 @@ class EfficientNet(nn.Module):
         self.data_regime = [{'input_size': resolution, 'autoaugment': True}]
         self.data_eval_regime = [{'input_size': resolution,
                                   'scale_size': int(resolution * 8/7)}]
+        if use_cifar:
+            self.data_regime[0]['name'] = 'cifar10'
+            self.data_eval_regime[0]['name'] = 'cifar10'
 
     def forward(self, x):
         x = self.features(x)
@@ -195,8 +201,8 @@ class EfficientNet(nn.Module):
 
 
 def efficientnet(**config):
-    dataset = config.pop('dataset', 'imagenet')
-    assert dataset == 'imagenet'
+    # dataset = config.pop('dataset', 'imagenet')
+    # assert dataset == 'imagenet'
 
     scale = config.pop('scale', 'b0')
 
