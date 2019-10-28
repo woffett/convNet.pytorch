@@ -13,6 +13,9 @@ try:
 except ImportError:
     _TENSORWATCH_AVAILABLE = False
 
+# profiling tools
+from pytorch_memlab import profile, MemReporter
+
 
 def _flatten_duplicates(inputs, target, batch_first=True, expand_target=True):
     duplicates = inputs.size(1)

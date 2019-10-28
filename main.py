@@ -21,6 +21,9 @@ from datetime import datetime
 from ast import literal_eval
 from trainer import Trainer
 
+# profiling tools
+from pytorch_memlab import profile, MemReporter
+
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
                      and callable(models.__dict__[name]))
@@ -127,7 +130,6 @@ def main():
 
     main_worker(args)
 
-
 def main_worker(args):
     global best_prec1, dtype
     best_prec1 = 0
@@ -141,6 +143,9 @@ def main_worker(args):
     save_path = path.join(args.results_dir, args.save)
 
     args.distributed = args.local_rank >= 0 or args.world_size > 1
+
+    # profiling tool
+    reporter = MemReporter()
 
     if args.distributed:
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_init,
@@ -170,6 +175,9 @@ def main_worker(args):
     logging.debug("run arguments: %s", args)
     logging.info("creating model %s", args.model)
 
+    print('=== Before loading model ===')
+    reporter.report()
+    
     if 'cuda' in args.device and torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
         torch.cuda.set_device(args.device_ids[0])
@@ -189,6 +197,9 @@ def main_worker(args):
     logging.info("created model with configuration: %s", model_config)
     num_parameters = sum([l.nelement() for l in model.parameters()])
     logging.info("number of parameters: %d", num_parameters)
+
+    print('=== After loading model ===')
+    reporter.report()
 
     # optionally resume from a checkpoint
     if args.evaluate:
@@ -245,6 +256,9 @@ def main_worker(args):
 
     optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
         else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)
+
+    print('=== After loading model ===')
+    reporter.report()
 
     if optim_state_dict is not None:
         optimizer.load_state_dict(optim_state_dict)

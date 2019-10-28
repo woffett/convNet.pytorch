@@ -3,17 +3,21 @@ import torch
 import torch.nn as nn
 import math
 import torch.nn.functional as F
+from sparse_layers.sparse_layers import SparseLinear, SparseConv2d
 from .modules.se import SESwishBlock
 from .modules.activations import Swish, HardSwish
 
 __all__ = ['efficientnet']
 
-
 def init_model(model):
     for m in model.modules():
-        if isinstance(m, nn.Conv2d):
+        if isinstance(m, nn.Conv2d) and hasattr(m, 'weight'):
             n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
             m.weight.data.normal_(0, math.sqrt(2. / n))
+        elif isinstance(m, SparseConv2d) and hasattr(m, 'sparse_weight'):
+            kernel_size = m.wrapped_module.kernel_size
+            n = kernel_size[0] * kernel_size[1] * m.wrapped_module.out_channels
+            m.sparse_weight.data.normal_(0, math.sqrt(2. / n))
         elif isinstance(m, nn.BatchNorm2d):
             m.weight.data.fill_(1)
             m.bias.data.zero_()
@@ -46,9 +50,16 @@ class ConvBNAct(nn.Sequential):
     def __init__(self, in_channels, out_channels, *kargs, **kwargs):
         hard_act = kwargs.pop('hard_act', False)
         kwargs.setdefault('bias', False)
+        sparsity = kwargs.pop('sparsity', None)
+
+        if sparsity is not None:
+            conv2d = SparseConv2d(in_channels, out_channels, nonzero_frac=sparsity,
+                                  *kargs, **kwargs)
+        else:
+            conv2d = nn.Conv2d(in_channels, out_channels, *kargs, **kwargs)
 
         super(ConvBNAct, self).__init__(
-            nn.Conv2d(in_channels, out_channels, *kargs, **kwargs),
+            conv2d,
             nn.BatchNorm2d(out_channels),
             HardSwish() if hard_act else Swish()
         )
@@ -65,18 +76,27 @@ def drop_connect(x, drop_prob):
 
 class MBConv(nn.Module):
     def __init__(self, in_channels, out_channels, expansion=1, kernel_size=3,
-                 stride=1, padding=1, se_ratio=0.25, hard_act=False):
+                 stride=1, padding=1, se_ratio=0.25, hard_act=False, sparsity=None):
         expanded = in_channels * expansion
         super(MBConv, self).__init__()
+
+        # sparse convolution
+        if sparsity is not None:
+            conv2d = SparseConv2d(expanded, out_channels, 1, bias=False,
+                                  nonzero_frac=sparsity)
+        else:
+            conv2d = nn.Conv2d(expanded, out_channels, 1, bias=False)
+
         self.add_res = stride == 1 and in_channels == out_channels
         self.block = nn.Sequential(
             ConvBNAct(in_channels, expanded, 1,
-                      hard_act=hard_act) if expanded != in_channels else nn.Identity(),
+                      hard_act=hard_act, sparsity=sparsity) if expanded != in_channels else nn.Identity(),
             ConvBNAct(expanded, expanded, kernel_size,
-                      stride=stride, padding=padding, groups=expanded, hard_act=hard_act),
+                      stride=stride, padding=padding, groups=expanded,
+                      hard_act=hard_act, sparsity=sparsity),
             SESwishBlock(expanded, expanded, int(in_channels*se_ratio),
-                         hard_act=hard_act) if se_ratio > 0 else nn.Identity(),
-            nn.Conv2d(expanded, out_channels, 1, bias=False),
+                         hard_act=hard_act, sparsity=sparsity) if se_ratio > 0 else nn.Identity(),
+            conv2d,
             nn.BatchNorm2d(out_channels)
         )
         self.drop_prob = 0
@@ -92,9 +112,10 @@ class MBConv(nn.Module):
 
 class MBConvBlock(nn.Sequential):
     def __init__(self, in_channels, out_channels, num, expansion=1, kernel_size=3,
-                 stride=1, padding=1, se_ratio=0.25, hard_act=False):
+                 stride=1, padding=1, se_ratio=0.25, hard_act=False, sparsity=None):
         kwargs = dict(expansion=expansion, kernel_size=kernel_size,
-                      stride=stride, padding=padding, se_ratio=se_ratio, hard_act=hard_act)
+                      stride=stride, padding=padding, se_ratio=se_ratio, hard_act=hard_act,
+                      sparsity=sparsity)
         first_conv = MBConv(in_channels, out_channels, **kwargs)
         kwargs['stride'] = 1
         super(MBConvBlock, self).__init__(first_conv,
@@ -107,11 +128,14 @@ class EfficientNet(nn.Module):
     def __init__(self, width_coeff=1, depth_coeff=1, resolution=224,
                  se_ratio=0.25, regime='cosine', num_classes=1000,
                  scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2,
-                 num_epochs=200, hard_act=False, weight_decay=1e-5, use_cifar=False):
+                 num_epochs=200, hard_act=False, weight_decay=1e-5,
+                 use_cifar=False, sparsity=None):
         super(EfficientNet, self).__init__()
 
         if use_cifar:
             resolution = 32
+
+        self.sparse = sparsity is not None
 
         def channels(base_channels, coeff=width_coeff, divisor=8, min_channels=None):
             if coeff == 1:
@@ -132,7 +156,8 @@ class EfficientNet(nn.Module):
             padding = padding or int((kernel_size-1)//2)
             return {'out_channels': channels(out_channels), 'num': repeats(num),
                     'expansion': expansion, 'kernel_size': kernel_size, 'stride': stride,
-                    'padding': padding, 'se_ratio': se_ratio, 'hard_act': hard_act}
+                    'padding': padding, 'se_ratio': se_ratio, 'hard_act': hard_act,
+                    'sparsity': sparsity}
 
         conv_stride = 1 if use_cifar else 2
         stages = [
@@ -152,8 +177,10 @@ class EfficientNet(nn.Module):
             layers.append(MBConvBlock(in_channel, **stages[i]))
 
         self.features = nn.Sequential(
+            # stem
             ConvBNAct(3, channels(32), 3, conv_stride, 1, hard_act=hard_act),
             *layers,
+            # head
             ConvBNAct(channels(320), channels(1280), 1),
             nn.AdaptiveAvgPool2d(1),
             nn.Dropout(dropout_rate, True)
