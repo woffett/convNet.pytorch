@@ -130,6 +130,7 @@ def main():
 
     main_worker(args)
 
+@profile
 def main_worker(args):
     global best_prec1, dtype
     best_prec1 = 0
@@ -257,7 +258,11 @@ def main_worker(args):
     optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
         else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)
 
-    print('=== After loading model ===')
+    '''
+    send a dummy batch through the model to allocate the momentum tensors
+    '''
+
+    print('=== After loading optimizer ===')
     reporter.report()
 
     if optim_state_dict is not None:
