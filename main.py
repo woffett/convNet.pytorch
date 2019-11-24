@@ -118,6 +118,7 @@ parser.add_argument('--tensorwatch', action='store_true', default=False,
                     help='set tensorwatch logging')
 parser.add_argument('--tensorwatch-port', default=0, type=int,
                     help='set tensorwatch port')
+parser.add_argument('--profile', type=int, action='store_ture', default=False)
 
 
 def main():
@@ -176,8 +177,9 @@ def main_worker(args):
     logging.debug("run arguments: %s", args)
     logging.info("creating model %s", args.model)
 
-    print('=== Before loading model ===')
-    reporter.report()
+    if args.profile:
+        print('=== Before loading model ===')
+        reporter.report()
     
     if 'cuda' in args.device and torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
@@ -199,8 +201,9 @@ def main_worker(args):
     num_parameters = sum([l.nelement() for l in model.parameters()])
     logging.info("number of parameters: %d", num_parameters)
 
-    print('=== After loading model ===')
-    reporter.report()
+    if args.profile:
+        print('=== After loading model ===')
+        reporter.report()
 
     # optionally resume from a checkpoint
     if args.evaluate:
@@ -262,8 +265,9 @@ def main_worker(args):
     send a dummy batch through the model to allocate the momentum tensors
     '''
 
-    print('=== After loading optimizer ===')
-    reporter.report()
+    if args.profile:
+        print('=== After loading optimizer ===')
+        reporter.report()
 
     if optim_state_dict is not None:
         optimizer.load_state_dict(optim_state_dict)
