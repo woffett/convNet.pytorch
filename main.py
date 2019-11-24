@@ -118,7 +118,7 @@ parser.add_argument('--tensorwatch', action='store_true', default=False,
                     help='set tensorwatch logging')
 parser.add_argument('--tensorwatch-port', default=0, type=int,
                     help='set tensorwatch port')
-parser.add_argument('--profile', type=int, action='store_ture', default=False)
+parser.add_argument('--profile', type=int, action='store_true', default=False)
 
 
 def main():
