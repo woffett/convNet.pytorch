@@ -114,7 +114,7 @@ class OptimRegime(Regime):
         self.schedule_time_frame = 'epoch'
         self.log = log
 
-        if model.sparse:
+        if hasattr(model, "sparse") and model.sparse:
             self.optimizer = SparseOptimizer(self.optimizer, model)
 
     def update(self, epoch=None, train_steps=None, metrics=None):

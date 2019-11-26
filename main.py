@@ -21,6 +21,9 @@ from datetime import datetime
 from ast import literal_eval
 from trainer import Trainer
 
+from models.modules.se import SESwishBlock
+from sparse_layers.sparse_layers import SparseLinear, SparseConv2d
+
 # profiling tools
 from pytorch_memlab import profile, MemReporter
 
@@ -118,7 +121,7 @@ parser.add_argument('--tensorwatch', action='store_true', default=False,
                     help='set tensorwatch logging')
 parser.add_argument('--tensorwatch-port', default=0, type=int,
                     help='set tensorwatch port')
-parser.add_argument('--profile', type=int, action='store_true', default=False)
+parser.add_argument('--profile', action='store_true', default=False)
 
 
 def main():
@@ -131,7 +134,6 @@ def main():
 
     main_worker(args)
 
-@profile
 def main_worker(args):
     global best_prec1, dtype
     best_prec1 = 0
@@ -201,10 +203,6 @@ def main_worker(args):
     num_parameters = sum([l.nelement() for l in model.parameters()])
     logging.info("number of parameters: %d", num_parameters)
 
-    if args.profile:
-        print('=== After loading model ===')
-        reporter.report()
-
     # optionally resume from a checkpoint
     if args.evaluate:
         if not path.isfile(args.evaluate):
@@ -246,6 +244,22 @@ def main_worker(args):
     criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
     criterion.to(args.device, dtype)
     model.to(args.device, dtype)
+
+    if args.profile:
+        print('=== After loading model ===')
+        reporter.report()
+
+    sparse_numel = 0
+    for m in model.modules():
+        # if isinstance(m, nn.Conv2d):
+        #     if m.in_channels != 1280 and m.in_channels != 3 \
+        #        and m.in_channels != 320:
+        #         sparse_numel += sum([p.nelement() for p in m.parameters()])
+        # if isinstance(m, SESwishBlock):
+        #     sparse_numel += sum([p.nelement() for p in m.parameters()])
+        if isinstance(m, SparseLinear) or isinstance(m, SparseConv2d):
+            sparse_numel += sum([p.nelement() for p in m.parameters()])
+    print('Sparse numel = %d\n' % sparse_numel)
 
     # Batch-norm should always be done in float
     if 'half' in args.dtype:
