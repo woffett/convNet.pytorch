@@ -249,17 +249,19 @@ def main_worker(args):
         print('=== After loading model ===')
         reporter.report()
 
-    sparse_numel = 0
-    for m in model.modules():
-        # if isinstance(m, nn.Conv2d):
-        #     if m.in_channels != 1280 and m.in_channels != 3 \
-        #        and m.in_channels != 320:
-        #         sparse_numel += sum([p.nelement() for p in m.parameters()])
-        # if isinstance(m, SESwishBlock):
-        #     sparse_numel += sum([p.nelement() for p in m.parameters()])
-        if isinstance(m, SparseLinear) or isinstance(m, SparseConv2d):
-            sparse_numel += sum([p.nelement() for p in m.parameters()])
-    print('Sparse numel = %d\n' % sparse_numel)
+    # counting number of sparse elements
+        
+    # sparse_numel = 0
+    # for m in model.modules():
+    #     # if isinstance(m, nn.Conv2d):
+    #     #     if m.in_channels != 1280 and m.in_channels != 3 \
+    #     #        and m.in_channels != 320:
+    #     #         sparse_numel += sum([p.nelement() for p in m.parameters()])
+    #     # if isinstance(m, SESwishBlock):
+    #     #     sparse_numel += sum([p.nelement() for p in m.parameters()])
+    #     if isinstance(m, SparseLinear) or isinstance(m, SparseConv2d):
+    #         sparse_numel += sum([p.nelement() for p in m.parameters()])
+    # print('Sparse numel = %d\n' % sparse_numel)
 
     # Batch-norm should always be done in float
     if 'half' in args.dtype:
@@ -278,6 +280,8 @@ def main_worker(args):
     '''
     send a dummy batch through the model to allocate the momentum tensors
     '''
+    dummy_inp = torch.zeros(100, 3, 32, 32)
+    dummy_out = model(dummy_inp)
 
     if args.profile:
         print('=== After loading optimizer ===')
