@@ -279,10 +279,9 @@ def main_worker(args):
 
     '''
     send a dummy batch through the model to allocate the momentum tensors
-    '''
-    dummy_inp = torch.zeros(100, 3, 32, 32)
+    dummy_inp = torch.zeros(100, 3, 32, 32).cuda()
     dummy_out = model(dummy_inp)
-
+    '''
     if args.profile:
         print('=== After loading optimizer ===')
         reporter.report()

@@ -221,8 +221,8 @@ class EfficientNet(nn.Module):
         self.data_eval_regime = [{'input_size': resolution,
                                   'scale_size': int(resolution * 8/7)}]
         if use_cifar:
-            self.data_regime[0]['name'] = 'cifar10'
-            self.data_eval_regime[0]['name'] = 'cifar10'
+            self.data_regime[0]['name'] = 'cifar%d' % num_classes
+            self.data_eval_regime[0]['name'] = 'cifar%d' % num_classes
 
     def forward(self, x):
         x = self.features(x)
