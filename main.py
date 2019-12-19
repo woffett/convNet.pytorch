@@ -121,7 +121,10 @@ parser.add_argument('--tensorwatch', action='store_true', default=False,
                     help='set tensorwatch logging')
 parser.add_argument('--tensorwatch-port', default=0, type=int,
                     help='set tensorwatch port')
+
 parser.add_argument('--profile', action='store_true', default=False)
+parser.add_argument('--rewire-frac', default=None, type=float,
+                    help='rewiring fraction')
 
 
 def main():
@@ -198,6 +201,10 @@ def main_worker(args):
     if args.model_config is not '':
         model_config = dict(model_config, **literal_eval(args.model_config))
 
+    if args.rewire_frac is not None:
+        assert(0.0 <= args.rewire_frac and args.rewire_frac <= 1.0)
+        model_config['rewire_frac'] = args.rewire_frac
+
     model = model(**model_config)
     logging.info("created model with configuration: %s", model_config)
     num_parameters = sum([l.nelement() for l in model.parameters()])
@@ -272,7 +279,8 @@ def main_worker(args):
                                               'optimizer': args.optimizer,
                                               'lr': args.lr,
                                               'momentum': args.momentum,
-                                              'weight_decay': args.weight_decay}])
+                                              'weight_decay': args.weight_decay,
+                                              'rewire_frac': args.rewire_frac}])
 
     optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
         else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)

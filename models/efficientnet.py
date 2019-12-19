@@ -129,7 +129,7 @@ class EfficientNet(nn.Module):
                  se_ratio=0.25, regime='cosine', num_classes=1000,
                  scale_lr=1, dropout_rate=0.2, drop_connect_rate=0.2,
                  num_epochs=200, hard_act=False, weight_decay=1e-5,
-                 use_cifar=False, sparsity=None):
+                 use_cifar=False, sparsity=None, rewire_frac=None):
         super(EfficientNet, self).__init__()
 
         if use_cifar:
@@ -216,6 +216,9 @@ class EfficientNet(nn.Module):
             self.regime = [{'optimizer': 'SGD', 'momentum': 0.9,
                             'regularizer': weight_decay_config(1e-5),
                             'epoch_lambda': config_by_epoch}]
+
+        if rewire_frac is not None:
+            self.regime['rewire_frac'] = rewire_frac
 
         self.data_regime = [{'input_size': resolution, 'autoaugment': True}]
         self.data_eval_regime = [{'input_size': resolution,

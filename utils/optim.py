@@ -115,7 +115,9 @@ class OptimRegime(Regime):
         self.log = log
 
         if hasattr(model, "sparse") and model.sparse:
-            self.optimizer = SparseOptimizer(self.optimizer, model)
+            rewire_frac = regime.get('rewire_frac', None)
+            self.optimizer = SparseOptimizer(self.optimizer, model,
+                                             rewire_frac=rewire_frac)
 
     def update(self, epoch=None, train_steps=None, metrics=None):
         """adjusts optimizer according to current epoch or steps and training regime.
