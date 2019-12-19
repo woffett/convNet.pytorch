@@ -218,7 +218,7 @@ class EfficientNet(nn.Module):
                             'epoch_lambda': config_by_epoch}]
 
         if rewire_frac is not None:
-            self.regime['rewire_frac'] = rewire_frac
+            self.regime[0]['rewire_frac'] = rewire_frac
 
         self.data_regime = [{'input_size': resolution, 'autoaugment': True}]
         self.data_eval_regime = [{'input_size': resolution,

@@ -115,7 +115,7 @@ class OptimRegime(Regime):
         self.log = log
 
         if hasattr(model, "sparse") and model.sparse:
-            rewire_frac = regime.get('rewire_frac', None)
+            rewire_frac = regime[0].get('rewire_frac', None)
             self.optimizer = SparseOptimizer(self.optimizer, model,
                                              rewire_frac=rewire_frac)
 
