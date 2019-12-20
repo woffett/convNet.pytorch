@@ -173,6 +173,6 @@ def mobilenet(**config):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    dataset = config.pop('dataset', 'imagenet')
-    assert dataset == 'imagenet'
+    # dataset = config.pop('dataset', 'imagenet')
+    # assert dataset == 'imagenet'
     return MobileNet(**config)

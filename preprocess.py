@@ -134,6 +134,8 @@ def get_transform(transform_name='imagenet', input_size=None, scale_size=None,
                                       num_crops=num_crops, normalize=normalize)
     elif 'cifar' in transform_name:  # resnet augmentation is default for imagenet
         input_size = input_size or 32
+        if normalize is None:
+            normalize = _CIFAR10_STATS
         if augment:
             scale_size = scale_size or 32
             padding = padding or 4
