@@ -322,7 +322,8 @@ class ResNet_cifar(ResNet):
                                        residual_block=residual_block, dropout=dropout, mixup=mixup)
         self.layer3 = self._make_layer(block, width[2], n, stride=2, groups=groups[2],
                                        residual_block=residual_block, dropout=dropout, mixup=mixup)
-        self.layer4 = lambda x: x
+        self.layer4 = self._make_layer(block, width[3], n, stride=2, groups=groups[3],
+                                       residual_block=residual_block, dropout=dropout, mixup=mixup)
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(width[-1], num_classes)
 
