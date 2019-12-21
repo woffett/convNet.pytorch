@@ -59,14 +59,14 @@ class DepthwiseSeparableFusedConv2d(nn.Module):
 class MobileNet(nn.Module):
 
     def __init__(self, width=1., shallow=False, regime=None,
-                 num_classes=1000, low_res=False):
+                 num_classes=1000, cifar=False):
         super(MobileNet, self).__init__()
         num_classes = num_classes or 1000
         width = width or 1.
-        lr_stride = 1 if low_res else 2 # lower stride if on cifar
+        lr_stride = 1 if cifar else 2 # lower stride if on cifar
         layers = [
             nn.Conv2d(3, nearby_int(width * 32),
-                      kernel_size=3, stride=lr_stride, padding=1, bias=False),
+                      kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(nearby_int(width * 32)),
             nn.ReLU(inplace=True),
 
@@ -75,13 +75,13 @@ class MobileNet(nn.Module):
                 kernel_size=3, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 64), nearby_int(width * 128),
-                kernel_size=3, stride=lr_stride, padding=1),
+                kernel_size=3, stride=2, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 128), nearby_int(width * 128),
                 kernel_size=3, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 128), nearby_int(width * 256),
-                kernel_size=3, stride=lr_stride, padding=1),
+                kernel_size=3, stride=2, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 256), nearby_int(width * 256),
                 kernel_size=3, padding=1),
@@ -121,17 +121,19 @@ class MobileNet(nn.Module):
         self.features = nn.Sequential(*layers)
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(nearby_int(width * 1024), num_classes)
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                         std=[0.229, 0.224, 0.225])
 
-        self.data_regime = [{
-            'transform': transforms.Compose([
-                transforms.Resize(256),
-                transforms.RandomCrop(224),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                normalize])
-        }]
+        if not cifar:
+            normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                             std=[0.229, 0.224, 0.225])
+            self.data_regime = [{
+                'transform': transforms.Compose([
+                    transforms.Resize(256),
+                    transforms.RandomCrop(224),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    normalize])
+            }]
+
 
         if regime == 'small':
             scale_lr = 4
