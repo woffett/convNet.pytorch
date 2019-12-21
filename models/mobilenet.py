@@ -66,7 +66,7 @@ class MobileNet(nn.Module):
         lr_stride = 1 if cifar else 2 # lower stride if on cifar
         layers = [
             nn.Conv2d(3, nearby_int(width * 32),
-                      kernel_size=3, stride=2, padding=1, bias=False),
+                      kernel_size=3, stride=lr_stride, padding=1, bias=False),
             nn.BatchNorm2d(nearby_int(width * 32)),
             nn.ReLU(inplace=True),
 
