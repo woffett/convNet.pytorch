@@ -58,13 +58,15 @@ class DepthwiseSeparableFusedConv2d(nn.Module):
 
 class MobileNet(nn.Module):
 
-    def __init__(self, width=1., shallow=False, regime=None, num_classes=1000):
+    def __init__(self, width=1., shallow=False, regime=None,
+                 num_classes=1000, low_res=False):
         super(MobileNet, self).__init__()
         num_classes = num_classes or 1000
         width = width or 1.
+        lr_stride = 1 if low_res else 2 # lower stride if on cifar
         layers = [
             nn.Conv2d(3, nearby_int(width * 32),
-                      kernel_size=3, stride=2, padding=1, bias=False),
+                      kernel_size=3, stride=lr_stride, padding=1, bias=False),
             nn.BatchNorm2d(nearby_int(width * 32)),
             nn.ReLU(inplace=True),
 
@@ -73,13 +75,13 @@ class MobileNet(nn.Module):
                 kernel_size=3, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 64), nearby_int(width * 128),
-                kernel_size=3, stride=2, padding=1),
+                kernel_size=3, stride=lr_stride, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 128), nearby_int(width * 128),
                 kernel_size=3, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 128), nearby_int(width * 256),
-                kernel_size=3, stride=2, padding=1),
+                kernel_size=3, stride=lr_stride, padding=1),
             DepthwiseSeparableFusedConv2d(
                 nearby_int(width * 256), nearby_int(width * 256),
                 kernel_size=3, padding=1),
