@@ -55,12 +55,14 @@ class ConvBNAct(nn.Sequential):
         if sparsity is not None:
             conv2d = SparseConv2d(in_channels, out_channels, nonzero_frac=sparsity,
                                   *kargs, **kwargs)
+            bn = nn.BatchNorm2d(out_channels, track_running_stats=False)            
         else:
             conv2d = nn.Conv2d(in_channels, out_channels, *kargs, **kwargs)
+            bn = nn.BatchNorm2d(out_channels)            
 
         super(ConvBNAct, self).__init__(
             conv2d,
-            nn.BatchNorm2d(out_channels),
+            bn,
             HardSwish() if hard_act else Swish()
         )
 
@@ -84,8 +86,10 @@ class MBConv(nn.Module):
         if sparsity is not None:
             conv2d = SparseConv2d(expanded, out_channels, 1, bias=False,
                                   nonzero_frac=sparsity)
+            bn = nn.BatchNorm2d(out_channels, track_running_stats=False)
         else:
             conv2d = nn.Conv2d(expanded, out_channels, 1, bias=False)
+            nn.BatchNorm2d(out_channels)
 
         self.add_res = stride == 1 and in_channels == out_channels
         self.block = nn.Sequential(
@@ -97,7 +101,7 @@ class MBConv(nn.Module):
             SESwishBlock(expanded, expanded, int(in_channels*se_ratio),
                          hard_act=hard_act, sparsity=sparsity) if se_ratio > 0 else nn.Identity(),
             conv2d,
-            nn.BatchNorm2d(out_channels)
+            bn
         )
         self.drop_prob = 0
 
