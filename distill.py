@@ -239,13 +239,6 @@ def validate(model, teacher_outputs, loader, criterion, print_freq=10, device='c
     return meter_results(meters)
 
 def main(args):
-    # first, set the random seed
-    logging.info('*** Setting seed to %d ***' % args.seed)
-    torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(args.seed)
-
     # define savepaths, save config
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if args.save is '':
@@ -254,6 +247,15 @@ def main(args):
     if not path.exists(save_path):
         os.makedirs(save_path)
     export_args_namespace(args, path.join(save_path, 'config.json'))
+    setup_logging(path.join(save_path, 'log.txt'))
+
+    # set the random seed
+    logging.info('*** Setting seed to %d ***' % args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(args.seed)
+
     
     # load dataset
     logging.info('*** Loading %s dataset... ***' % args.dataset)
