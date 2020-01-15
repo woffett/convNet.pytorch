@@ -116,11 +116,11 @@ def construct_kd_loss(args):
     Note: teacher outputs are pre-softmax log probabilities
     '''
 
-    KLDiv = nn.KLDivLoss()
-    CE = nn.CrossEntropyLoss()
-    MSE = nn.MSELoss()
-    T = args.temperature
+    KLDiv = nn.KLDivLoss().to(args.device)
+    CE = nn.CrossEntropyLoss().to(args.device)
+    MSE = nn.MSELoss().to(args.device)
     alpha = args.alpha
+    T = args.temperature
 
     def caruana_loss(outputs, labels, teacher_outputs):
         return MSE(outputs, teacher_outputs)
@@ -159,7 +159,7 @@ def train(model, teacher_outputs, loader, optimizer, criterion, epoch,
 
     end = time.time()
     # main training loop
-    for i, (inps, targets) in tqdm(enumerate(loader)):
+    for i, (inps, targets) in enumerate(loader):
         # data loading time
         meters['data'].update(time.time() - end)
         
@@ -219,27 +219,28 @@ def validate(model, teacher_outputs, loader, criterion, epoch, print_freq=10,
     end = time.time()
     # main val loop
     with torch.no_grad():
-        for i, (inps, targets) in tqdm(enumerate(loader)):
+        for i, (inps, targets) in enumerate(loader):
             # data loading time
             meters['data'].update(time.time() - end)
 
             # setup
             if cuda:
                 inps = inps.to(device)
-                targets = inps.to(device)
+                targets = targets.to(device)
 
             # forward
             output = model(inps)
             teacher_output = torch.from_numpy(teacher_outputs[i])
             if cuda:
                 teacher_output = teacher_output.to(device)
+
             loss = criterion(output, targets, teacher_output)
 
             # measure accuracy and losses
             prec1, prec5 = accuracy(output, targets, topk=(1,5))
-            meters['loss'].update(float(loss), inputs.size(0))
-            meters['prec1'].update(float(prec1), inputs.size(0))
-            meters['prec5'].update(float(prec5), inputs.size(0))
+            meters['loss'].update(float(loss), inps.size(0))
+            meters['prec1'].update(float(prec1), inps.size(0))
+            meters['prec5'].update(float(prec5), inps.size(0))
             meters['step'].update(time.time() - end)
             end = time.time()
 
@@ -267,8 +268,8 @@ def main(args):
     save_path = os.path.join(args.results_dir, args.save)
     if not os.path.exists(save_path):
         os.makedirs(save_path)
-    export_args_namespace(args, path.join(save_path, 'config.json'))
-    setup_logging(path.join(save_path, 'log.txt'))
+    export_args_namespace(args, os.path.join(save_path, 'config.json'))
+    setup_logging(os.path.join(save_path, 'log.txt'))
 
     # set the random seed
     logging.info('*** Setting seed to %d ***' % args.seed)
@@ -283,13 +284,14 @@ def main(args):
                             defaults={'datasets_path': args.datasets_dir,
                                       'name': args.dataset,
                                       'split': 'train',
-                                      'augment': False,
+                                      'augment': True,
                                       'input_size': args.input_size,
                                       'batch_size': args.batch_size,
-                                      'shuffle': False,
+                                      'shuffle': True,
                                       'num_workers': args.workers,
                                       'pin_memory': True,
-                                      'drop_last': False})
+                                      'autoaugment': True,
+                                      'drop_last': True})
     train_loader = train_data.get_loader()
 
     val_data = DataRegime(None,
@@ -386,9 +388,10 @@ def main(args):
         save_checkpoint({
             'epoch': epoch+1,
             'model': args.student,
-            'teacher': args.TEACHER,
-            'config': args.model_config,
-            'state_dict': model.state_dict,
+            'teacher': args.teacher,
+            'model_config': args.student_model_config,
+            'teacher_config': args.teacher_model_config,
+            'state_dict': model.state_dict(),
             'best_prec1': best_prec1
         }, is_best, path=save_path)
 
