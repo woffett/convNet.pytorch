@@ -7,11 +7,13 @@ import torch.nn.functional as F
 import logging
 import time
 import os
+from ast import literal_eval
 from data import DataRegime, SampledDataRegime
+from datetime import datetime
 from tqdm import tqdm
-from utils import setup_logging
 from utils.meters import AverageMeter, accuracy
-from utils.log import save_checkpoint, export_args_namespace
+from utils.optim import OptimRegime
+from utils.log import setup_logging, save_checkpoint, export_args_namespace
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -67,15 +69,30 @@ parser.add_argument('--results-dir', metavar='RESULTS_DIR', default='./results',
                     help='results dir')
 parser.add_argument('--save', metavar='SAVE', default='',
                     help='saved folder')
+parser.add_argument('--workers', default=8, type=int, metavar='N',
+                    help='number of data loading workers (default: 8)')
+parser.add_argument('--epochs', default=90, type=int, metavar='N',
+                    help='number of total epochs to run')
 
-def fetch_teacher_outputs(teacher, loader, device='cpu'):
+def fetch_teacher_outputs(teacher_model, loader, teacher_path, dataset,
+                          train=True, device='cpu'):
     '''
-    Perform a signle forward pass of the whole dataset to obtain
+    Perform a single forward pass of the whole dataset to obtain
     the teacher model's logits.
     
     Inspired by: 
        https://github.com/peterliht/knowledge-distillation-pytorch/blob/master/train.py
     '''
+    
+    teacher_dir = os.path.dirname(teacher_path)
+    train_str = 'train' if train else 'val'
+    output_path = os.path.join(teacher_dir, '%s_%s_outputs.pt' % (dataset,train_str))
+    if os.path.exists(output_path):
+        logging.info('Found saved teacher %s outputs!' % train_str)
+        outputs = torch.load(output_path)
+        return outputs
+
+    logging.info('Generating teacher %s outputs...' % train_str)
     cuda = 'cuda' in device and torch.cuda.is_available()
     teacher_model.eval()
     if cuda:
@@ -85,6 +102,9 @@ def fetch_teacher_outputs(teacher, loader, device='cpu'):
         if cuda:
             inps = inps.to(device)
         outputs.append(teacher_model(inps).data.cpu().numpy())
+
+    torch.save(outputs, output_path)
+    logging.info('Done!')
 
     return outputs
 
@@ -113,7 +133,7 @@ def construct_kd_loss(args):
 
     losses = {'hinton': hinton_loss, 'caruana': caruana_loss}
 
-    return lossses[args.loss]
+    return losses[args.loss]
 
 def meter_results(meters):
     '''
@@ -124,7 +144,7 @@ def meter_results(meters):
     results['error5'] = 100. - results['prec5']
     return results
     
-def train(model, teacher_outputs, loader, optimizer, criterion,
+def train(model, teacher_outputs, loader, optimizer, criterion, epoch,
           print_freq=10, device='cpu'):
 
     # setup meters
@@ -150,20 +170,20 @@ def train(model, teacher_outputs, loader, optimizer, criterion,
             targets = targets.to(device)
 
         # forward
-        outputs = model(inps)
+        output = model(inps)
         # backward
-        teacher_outputs = torch.from_numpy(teacher_outputs[i])
+        teacher_output = torch.from_numpy(teacher_outputs[i])
         if cuda:
-            teacher_outputs = teacher_outputs.to(device)
-        loss = criterion(outputs, labels, teacher_outputs)
+            teacher_output = teacher_output.to(device)
+        loss = criterion(output, targets, teacher_output)
         loss.backward()
         optimizer.step()
 
         # measure accuracy and losses
-        prec1, prec5 = accuracy(output, target, topk=(1,5))
-        meters['loss'].update(float(loss), inputs.size(0))
-        meters['prec1'].update(float(prec1), inputs.size(0))
-        meters['prec5'].update(float(prec5), inputs.size(0))
+        prec1, prec5 = accuracy(output, targets, topk=(1,5))
+        meters['loss'].update(float(loss), inps.size(0))
+        meters['prec1'].update(float(prec1), inps.size(0))
+        meters['prec5'].update(float(prec5), inps.size(0))
         meters['step'].update(time.time() - end)
         end = time.time()
 
@@ -176,14 +196,15 @@ def train(model, teacher_outputs, loader, optimizer, criterion,
                          'Prec@1 {meters[prec1].val:.3f} ({meters[prec1].avg:.3f})\t'
                          'Prec@5 {meters[prec5].val:.3f} ({meters[prec5].avg:.3f})\t'
                          .format(
-                             self.epoch, i, len(data_loader),
+                             epoch, i, len(loader),
                              phase='TRAINING',
                              meters=meters))
             logging.info(report)
 
     return meter_results(meters)
 
-def validate(model, teacher_outputs, loader, criterion, print_freq=10, device='cpu'):
+def validate(model, teacher_outputs, loader, criterion, epoch, print_freq=10,
+             device='cpu'):
 
     # setup meters
     meters = {name: AverageMeter()
@@ -208,14 +229,14 @@ def validate(model, teacher_outputs, loader, criterion, print_freq=10, device='c
                 targets = inps.to(device)
 
             # forward
-            outputs = model(inps)
-            teacher_outputs = torch.from_numpy(teacher_outputs[i])
+            output = model(inps)
+            teacher_output = torch.from_numpy(teacher_outputs[i])
             if cuda:
-                teacher_outputs = teacher_outputs.to(device)
-            loss = criterion(outputs, labels, teacher_outputs)
+                teacher_output = teacher_output.to(device)
+            loss = criterion(output, targets, teacher_output)
 
             # measure accuracy and losses
-            prec1, prec5 = accuracy(output, target, topk=(1,5))
+            prec1, prec5 = accuracy(output, targets, topk=(1,5))
             meters['loss'].update(float(loss), inputs.size(0))
             meters['prec1'].update(float(prec1), inputs.size(0))
             meters['prec5'].update(float(prec5), inputs.size(0))
@@ -231,7 +252,7 @@ def validate(model, teacher_outputs, loader, criterion, print_freq=10, device='c
                              'Prec@1 {meters[prec1].val:.3f} ({meters[prec1].avg:.3f})\t'
                              'Prec@5 {meters[prec5].val:.3f} ({meters[prec5].avg:.3f})\t'
                              .format(
-                                 self.epoch, i, len(data_loader),
+                                 epoch, i, len(loader),
                                  phase='EVALUATING',
                                  meters=meters))
                 logging.info(report)
@@ -250,33 +271,33 @@ def main(args):
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if args.save is '':
         args.save = time_stamp
-    save_path = path.join(args.results_dir, args.save)
-    if not path.exists(save_path):
+    save_path = os.path.join(args.results_dir, args.save)
+    if not os.path.exists(save_path):
         os.makedirs(save_path)
-    export_args_namespace(args, path.join(save_path, 'config.json'))
+    export_args_namespace(args, os.path.join(save_path, 'config.json'))
     
     # load dataset
     logging.info('*** Loading %s dataset... ***' % args.dataset)
-    train_data = DataRegime(getattr(model, 'data_eval_regime', None),
+    train_data = DataRegime(None,
                             defaults={'datasets_path': args.datasets_dir,
                                       'name': args.dataset,
                                       'split': 'train',
                                       'augment': False,
                                       'input_size': args.input_size,
-                                      'batch_size': args.eval_batch_size,
+                                      'batch_size': args.batch_size,
                                       'shuffle': False,
                                       'num_workers': args.workers,
                                       'pin_memory': True,
                                       'drop_last': False})
     train_loader = train_data.get_loader()
 
-    val_data = DataRegime(getattr(model, 'data_eval_regime', None),
+    val_data = DataRegime(None,
                           defaults={'datasets_path': args.datasets_dir,
                                     'name': args.dataset,
                                     'split': 'val',
                                     'augment': False,
                                     'input_size': args.input_size,
-                                    'batch_size': args.eval_batch_size,
+                                    'batch_size': args.batch_size,
                                     'shuffle': False,
                                     'num_workers': args.workers,
                                     'pin_memory': True,
@@ -293,15 +314,21 @@ def main(args):
            else dict()
 
     if args.teacher_model_config is not '':
-        teacher_config = dict(model_config,
+        teacher_config = dict(teacher_config,
                             **literal_eval(args.teacher_model_config))
         
     teacher = teacher(**teacher_config)
     teacher_ckpt = torch.load(args.teacher_path)
     teacher.load_state_dict(teacher_ckpt['state_dict'])
     
-    teacher_train_outputs = fetch_teacher_outputs(teacher, train_loader)
-    teacher_val_outputs = fetch_teacher_outputs(teacher, val_loader)
+    teacher_train_outputs = fetch_teacher_outputs(teacher, train_loader,
+                                                  args.teacher_path,
+                                                  args.dataset, train=True,
+                                                  device=args.device)
+    teacher_val_outputs = fetch_teacher_outputs(teacher, val_loader,
+                                                args.teacher_path,
+                                                args.dataset, train=False,
+                                                device=args.device)
 
     # clear teacher from memory
     del teacher
@@ -324,13 +351,13 @@ def main(args):
     logging.info('Done!')
 
     # create optimizer
-    optim_args = {
+    optim_args = [{
         'epoch': 0,
         'optimizer': args.optimizer,
         'lr': args.lr,
         'momentum': args.momentum,
         'weight_decay': args.weight_decay,
-    }
+    }]
     optimizer = OptimRegime(model, optim_args)
 
     # construct knowledge distillation loss fn
@@ -344,12 +371,14 @@ def main(args):
         optimizer.update(epoch, training_steps)
 
         # train for one epoch
-        train_results = train(model, teacher_train_outputs, train_loader, optimizer, criterion,
-              print_freq=args.print_freq, device=args.device)
+        train_results = train(model, teacher_train_outputs, train_loader,
+                              optimizer, criterion, epoch,
+                              print_freq=args.print_freq, device=args.device)
 
         # validate
-        val_results = validate(model, teacher_val_outputs, val_loader, criterion,
-                 print_freq=args.print_freq, device=args.device)
+        val_results = validate(model, teacher_val_outputs, val_loader,
+                               criterion, epoch,
+                               print_freq=args.print_freq, device=args.device)
 
         is_best = val_results['prec1'] > best_prec1
         best_prec1 = max(val_results['prec1'], best_prec1)
@@ -372,5 +401,5 @@ def main(args):
                      .format(epoch + 1, train=train_results, val=val_results))
 
 if __name__ == '__main__':
-    args = parser.parse_rags()
+    args = parser.parse_args()
     main(args)
