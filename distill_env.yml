@@ -120,5 +120,5 @@ dependencies:
     - extension==0.0.0
     - pytorch-memlab==0.0.4
     - timm==0.1.8
-prefix: /home/jlli/anaconda3/envs/ml
+prefix: /dfs/scratch1/jlli/miniconda3/envs/ml
 
