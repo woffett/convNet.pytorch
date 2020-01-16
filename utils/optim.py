@@ -8,7 +8,6 @@ from .param_filter import FilterParameters
 from . import regularization
 import torch.nn as nn
 from torch.optim.lr_scheduler import _LRScheduler
-from optim.sparse_optimizer import SparseOptimizer
 
 _OPTIMIZERS = {name: func for name, func in torch.optim.__dict__.items()}
 _LRSCHEDULERS = {name: func for name,
@@ -113,11 +112,6 @@ class OptimRegime(Regime):
         self.lr_scheduler = _EmptySchedule(self.optimizer, last_epoch=-1)
         self.schedule_time_frame = 'epoch'
         self.log = log
-
-        if hasattr(model, "sparse") and model.sparse:
-            rewire_frac = regime[0].get('rewire_frac', None)
-            self.optimizer = SparseOptimizer(self.optimizer, model,
-                                             rewire_frac=rewire_frac)
 
     def update(self, epoch=None, train_steps=None, metrics=None):
         """adjusts optimizer according to current epoch or steps and training regime.

@@ -22,7 +22,6 @@ from ast import literal_eval
 from trainer import Trainer
 
 from models.modules.se import SESwishBlock
-from sparse_layers.sparse_layers import SparseLinear, SparseConv2d
 
 # profiling tools
 from pytorch_memlab import profile, MemReporter
@@ -256,20 +255,6 @@ def main_worker(args):
     if args.profile:
         print('=== After loading model ===')
         reporter.report()
-
-    # counting number of sparse elements
-        
-    # sparse_numel = 0
-    # for m in model.modules():
-    #     # if isinstance(m, nn.Conv2d):
-    #     #     if m.in_channels != 1280 and m.in_channels != 3 \
-    #     #        and m.in_channels != 320:
-    #     #         sparse_numel += sum([p.nelement() for p in m.parameters()])
-    #     # if isinstance(m, SESwishBlock):
-    #     #     sparse_numel += sum([p.nelement() for p in m.parameters()])
-    #     if isinstance(m, SparseLinear) or isinstance(m, SparseConv2d):
-    #         sparse_numel += sum([p.nelement() for p in m.parameters()])
-    # print('Sparse numel = %d\n' % sparse_numel)
 
     # Batch-norm should always be done in float
     if 'half' in args.dtype:
