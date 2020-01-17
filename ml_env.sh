@@ -14,5 +14,5 @@ printf "which python\n"
 which python
 
 # Execute the command that was passed in as a string to this script.
-printf "\nExecute command: '$1'\n"
-eval $1
+printf "\nExecute command: '${cmd}'\n"
+eval $cmd
