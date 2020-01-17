@@ -10,7 +10,7 @@ def cmds_1_16_20_train_base_models():
                           'cmd="python /proj/distill/git/convNet.pytorch/main.py '
                           '--results-dir {} --datasets-dir {} --dataset {} --save {} --model {} '
                           '--model-config {} --input-size {} --dtype {} --autoaugment --device cuda '
-                          '--epochs {} --batch-size {} --lr {} --weight-decay {} --print-freq 10 --seed {}"'
+                          '--epochs {} --batch-size {} --lr {} --weight-decay {} --print-freq 10 --seed {}" '
                           '/proj/distill/git/convNet.pytorch/ml_env.sh\n')
     results_dir = '/proj/distill/results'
     data_dir = '/proj/distill/data'
