@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from sparse_layers.sparse_layers import SparseLinear
 from .activations import Swish, HardSwish, HardSigmoid
 
 
@@ -29,7 +28,7 @@ class SEBlock(nn.Module):
 class SESwishBlock(nn.Module):
     """ squeeze-excite block for MBConv """
 
-    def __init__(self, in_channels, out_channels=None, interm_channels=None, ratio=None, hard_act=False, sparsity=None):
+    def __init__(self, in_channels, out_channels=None, interm_channels=None, ratio=None, hard_act=False):
         super(SESwishBlock, self).__init__()
         assert not (interm_channels is None and ratio is None)
         interm_channels = interm_channels or in_channels // ratio
@@ -40,12 +39,8 @@ class SESwishBlock(nn.Module):
         self.activation = HardSwish() if hard_act else Swish(),
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 
-        if sparsity is not None:
-            linear1 = SparseLinear(in_channels, interm_channels, nonzero_frac=sparsity)
-            linear2 = SparseLinear(interm_channels, out_channels, nonzero_frac=sparsity)
-        else:
-            linear1 = nn.Linear(in_channels, interm_channels)
-            linear2 = nn.Linear(interm_channels, out_channels)
+        linear1 = nn.Linear(in_channels, interm_channels)
+        linear2 = nn.Linear(interm_channels, out_channels)
         
         self.transform = nn.Sequential(
             linear1,
