@@ -3,10 +3,12 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.parallel
+from ast import literal_eval
 from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
 from utils.mixup import MixUp, CutMix
 from random import sample
+import models
 try:
     import tensorwatch
     _TENSORWATCH_AVAILABLE = True
@@ -59,7 +61,9 @@ class Trainer(object):
     def __init__(self, model, criterion, optimizer=None,
                  device_ids=[0], device=torch.cuda, dtype=torch.float,
                  distributed=False, local_rank=-1, adapt_grad_norm=None,
-                 mixup=None, cutmix=None, loss_scale=1., grad_clip=-1, print_freq=100):
+                 mixup=None, cutmix=None, loss_scale=1., grad_clip=-1,
+                 print_freq=100, dataset=None,
+                 teacher=None, teacher_path=None, teacher_model_config=''):
         self._model = model
         self.criterion = criterion
         self.epoch = 0
@@ -78,6 +82,7 @@ class Trainer(object):
         self.adapt_grad_norm = adapt_grad_norm
         self.watcher = None
         self.streams = {}
+        self.dataset = dataset
 
         if distributed:
             self.model = nn.parallel.DistributedDataParallel(model,
@@ -87,6 +92,12 @@ class Trainer(object):
             self.model = nn.DataParallel(model, device_ids)
         else:
             self.model = model
+
+        self.teacher = teacher
+        self.teacher_path = teacher_path
+        # will generate them as needed
+        self.teacher_train_outputs = None
+        self.teacher_val_outputs = None
 
     def _grad_norm(self, inputs_batch, target_batch, chunk_batch=1):
         self.model.zero_grad()
@@ -106,13 +117,40 @@ class Trainer(object):
         grad = clip_grad_norm_(self.model.parameters(), float('inf'))
         return grad
 
-    def _step(self, inputs_batch, target_batch, training=False, average_output=False, chunk_batch=1):
+    def _get_teacher_outputs(self, training=False):
+        teacher_model = models.__dict__[self.teacher]
+        teacher_config = dict(**literal_eval(self.teacher_model_config))
+        teacher_model = teacher_model(**teacher_config)
+        teacher_ckpt = torch.load(self.teacher_path)
+        teacher_model.load_state_dict(teacher_ckpt['state_dict'])
+        if training:
+            self.teacher_train_outputs = \
+                fetch_teacher_outputs(teacher_model,
+                                      data_loader,
+                                      self.dataset,
+                                      train=True,
+                                      device=self.device)
+        else:
+            self.teacher_val_outputs = \
+                fetch_teacher_outputs(teacher_model,
+                                      data_loader,
+                                      self.dataset,
+                                      train=True,
+                                      device=self.device)
+
+    def _step(self, inputs_batch, target_batch, training=False,
+              teacher_batch=None, average_output=False, chunk_batch=1):
         outputs = []
         total_loss = 0
 
         if training:
             self.optimizer.zero_grad()
             self.optimizer.update(self.epoch, self.training_steps)
+
+        if teacher_batch is not None:
+            teacher_chunks = teacher_batch.chunk(chunk_batch, dim=0)]
+        else:
+            teacher_chunks = None
 
         for i, (inputs, target) in enumerate(zip(inputs_batch.chunk(chunk_batch, dim=0),
                                                  target_batch.chunk(chunk_batch, dim=0))):
@@ -133,6 +171,10 @@ class Trainer(object):
 
             # compute output
             output = self.model(inputs)
+            if teacher_chunks is not None:
+                teacher_output = teacher_chunks[i]
+            else:
+                teacher_output = None
 
             if mixup is not None:
                 target = mixup.mix_target(target, output.size(-1))
@@ -143,7 +185,11 @@ class Trainer(object):
                               for out in output]
                 else:
                     output = _average_duplicates(output, target)
-            loss = self.criterion(output, target)
+                    
+            if teacher_outputs is not None:
+                loss = self.criterion(output, target, teacher_output)
+            else:
+                loss = self.criterion(output, target)
             grad = None
 
             if chunk_batch > 1:
@@ -180,6 +226,11 @@ class Trainer(object):
         return outputs, total_loss, grad
 
     def forward(self, data_loader, num_steps=None, training=False, average_output=False, chunk_batch=1):
+
+        teacher_outputs = self.teacher_train_outputs if training else \
+            self.teacher_val_outputs
+        if self.teacher_outputs is not None and teacher_outputs is None:
+                self._get_teacher_outputs(training=training)
 
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
@@ -218,9 +269,20 @@ class Trainer(object):
                 inputs, target = _flatten_duplicates(inputs, target, batch_first,
                                                      expand_target=not average_output)
 
+            if self.teacher is not None:
+                if training:
+                    teacher_output = \
+                        torch.from_numpy(self.teacher_train_outputs[i])
+                else:
+                    teacher_output = \
+                        torch.from_numpy(self.teacher_val_outputs[i])
+            else:
+                teacher_output=None
+                    
             output, loss, grad = self._step(inputs, target,
                                             training=training,
                                             average_output=average_output,
+                                            teacher_output=teacher_output,
                                             chunk_batch=chunk_batch)
 
             # measure accuracy and record loss

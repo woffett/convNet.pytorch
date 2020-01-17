@@ -20,6 +20,7 @@ from utils.param_filter import FilterModules, is_bn
 from datetime import datetime
 from ast import literal_eval
 from trainer import Trainer
+from distill import construct_kd_loss
 
 from models.modules.se import SESwishBlock
 
@@ -50,6 +51,17 @@ parser.add_argument('--input-size', type=int, default=None,
                     help='image input size')
 parser.add_argument('--model-config', default='',
                     help='additional architecture configuration')
+parser.add_argument('--distill-loss', default=None,
+                    choices=[None, 'hinton', 'caruana'])
+parser.add_argument('--teacher', metavar='TEACHER', default=None,
+                    choices=model_names + [None],
+                    help='teacher model architecture: ' +
+                    ' | '.join(model_names) +
+                    ' (default: resnet)')
+parser.add_argument('--teacher-path', type=str, default=None,
+                    help='path to model weights')
+parser.add_argument('--teacher-model-config', default='',
+                    help='additional architecture configuration for teacher model')
 parser.add_argument('--dtype', default='float',
                     help='type of tensor: ' +
                     ' | '.join(torch_dtypes.keys()) +
@@ -120,10 +132,11 @@ parser.add_argument('--tensorwatch', action='store_true', default=False,
                     help='set tensorwatch logging')
 parser.add_argument('--tensorwatch-port', default=0, type=int,
                     help='set tensorwatch port')
-
 parser.add_argument('--profile', action='store_true', default=False)
-parser.add_argument('--rewire-frac', default=None, type=float,
-                    help='rewiring fraction')
+parser.add_argument('--temperature', default=6.0 , type=float,
+                    help='Temperature for KD loss calculation')
+parser.add_argument('--alpha', default=0.95, type=float,
+                    help='Mixing hyperparam for KD loss calculation')
 
 
 def main():
@@ -184,7 +197,7 @@ def main_worker(args):
     if args.profile:
         print('=== Before loading model ===')
         reporter.report()
-    
+
     if 'cuda' in args.device and torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
         torch.cuda.set_device(args.device_ids[0])
@@ -248,7 +261,10 @@ def main_worker(args):
     loss_params = {}
     if args.label_smoothing > 0:
         loss_params['smooth_eps'] = args.label_smoothing
-    criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
+    if args.distill_loss is not None:
+        criterion = construct_kd_loss(args)
+    else:
+        criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
     criterion.to(args.device, dtype)
     model.to(args.device, dtype)
 
@@ -289,7 +305,12 @@ def main_worker(args):
                       distributed=args.distributed, local_rank=args.local_rank,
                       mixup=args.mixup, cutmix=args.cutmix,
                       loss_scale=args.loss_scale, grad_clip=args.grad_clip,
-                      adapt_grad_norm=args.adapt_grad_norm)
+                      adapt_grad_norm=args.adapt_grad_norm,
+                      teacher=args.teacher, teacher_path=args.teacher_path,
+                      teacher_model_config=args.teacher_model_config,
+                      distill_loss=args.distill_loss,
+                      distill_alpha=args.alpha,
+                      distill_temp=args.temperature)
     if args.tensorwatch:
         trainer.set_watcher(filename=path.abspath(path.join(save_path, 'tensorwatch.log')),
                             port=args.tensorwatch_port)
