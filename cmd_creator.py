@@ -1,8 +1,8 @@
 import pathlib
-import utils
+import helpers
 
 def get_cmdfile_path(filename):
-    return str(pathlib.PurePath(utils.get_base_dir(), 'scripts', filename))
+    return str(pathlib.PurePath(helpers.get_base_dir(), 'scripts', filename))
 
 def cmds_1_16_20_train_base_models():
     filename = get_cmdfile_path('1_16_20_train_base_models_cmds')

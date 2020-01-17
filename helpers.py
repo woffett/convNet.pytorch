@@ -3,7 +3,6 @@ import os
 import pathlib
 import socket
 
-
 def is_windows():
     """Determine if running on windows OS."""
     return os.name == 'nt'
