@@ -14,6 +14,7 @@ from tqdm import tqdm
 from utils.meters import AverageMeter, accuracy
 from utils.optim import OptimRegime
 from utils.log import setup_logging, save_checkpoint, export_args_namespace
+from utils.misc import torch_dtypes
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -116,9 +117,11 @@ def construct_kd_loss(args):
     Note: teacher outputs are pre-softmax log probabilities
     '''
 
-    KLDiv = nn.KLDivLoss().to(args.device)
-    CE = nn.CrossEntropyLoss().to(args.device)
-    MSE = nn.MSELoss().to(args.device)
+    dtype = torch_dtypes.get(args.dtype)
+
+    KLDiv = nn.KLDivLoss().to(args.device, dtype)
+    CE = nn.CrossEntropyLoss().to(args.device, dtype)
+    MSE = nn.MSELoss().to(args.device, dtype)
     alpha = args.alpha
     T = args.temperature
 
@@ -133,7 +136,7 @@ def construct_kd_loss(args):
 
     losses = {'hinton': hinton_loss, 'caruana': caruana_loss}
 
-    return losses[args.loss]
+    return losses[args.distill_loss]
 
 def meter_results(meters):
     '''

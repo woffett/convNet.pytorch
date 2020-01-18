@@ -8,6 +8,7 @@ from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
 from utils.mixup import MixUp, CutMix
 from random import sample
+from distill import fetch_teacher_outputs
 import models
 try:
     import tensorwatch
@@ -95,6 +96,7 @@ class Trainer(object):
 
         self.teacher = teacher
         self.teacher_path = teacher_path
+        self.teacher_model_config = teacher_model_config
         # will generate them as needed
         self.teacher_train_outputs = None
         self.teacher_val_outputs = None
@@ -117,9 +119,13 @@ class Trainer(object):
         grad = clip_grad_norm_(self.model.parameters(), float('inf'))
         return grad
 
-    def _get_teacher_outputs(self, training=False):
+    def _get_teacher_outputs(self, data_loader, training=False):
         teacher_model = models.__dict__[self.teacher]
-        teacher_config = dict(**literal_eval(self.teacher_model_config))
+        teacher_config = {'dataset': self.dataset} \
+                         if self.teacher not in ['efficientnet', 'mobilenet'] \
+                            else dict()
+        teacher_config = dict(teacher_config,
+                              **literal_eval(self.teacher_model_config))
         teacher_model = teacher_model(**teacher_config)
         teacher_ckpt = torch.load(self.teacher_path)
         teacher_model.load_state_dict(teacher_ckpt['state_dict'])
@@ -127,6 +133,7 @@ class Trainer(object):
             self.teacher_train_outputs = \
                 fetch_teacher_outputs(teacher_model,
                                       data_loader,
+                                      self.teacher_path,
                                       self.dataset,
                                       train=True,
                                       device=self.device)
@@ -134,8 +141,9 @@ class Trainer(object):
             self.teacher_val_outputs = \
                 fetch_teacher_outputs(teacher_model,
                                       data_loader,
+                                      self.teacher_path,
                                       self.dataset,
-                                      train=True,
+                                      train=False,
                                       device=self.device)
 
     def _step(self, inputs_batch, target_batch, training=False,
@@ -148,7 +156,7 @@ class Trainer(object):
             self.optimizer.update(self.epoch, self.training_steps)
 
         if teacher_batch is not None:
-            teacher_chunks = teacher_batch.chunk(chunk_batch, dim=0)]
+            teacher_chunks = teacher_batch.chunk(chunk_batch, dim=0)
         else:
             teacher_chunks = None
 
@@ -172,7 +180,7 @@ class Trainer(object):
             # compute output
             output = self.model(inputs)
             if teacher_chunks is not None:
-                teacher_output = teacher_chunks[i]
+                teacher_output = teacher_chunks[i].to(self.device)
             else:
                 teacher_output = None
 
@@ -186,7 +194,7 @@ class Trainer(object):
                 else:
                     output = _average_duplicates(output, target)
                     
-            if teacher_outputs is not None:
+            if teacher_output is not None:
                 loss = self.criterion(output, target, teacher_output)
             else:
                 loss = self.criterion(output, target)
@@ -229,8 +237,8 @@ class Trainer(object):
 
         teacher_outputs = self.teacher_train_outputs if training else \
             self.teacher_val_outputs
-        if self.teacher_outputs is not None and teacher_outputs is None:
-                self._get_teacher_outputs(training=training)
+        if self.teacher is not None and teacher_outputs is None:
+                self._get_teacher_outputs(data_loader, training=training)
 
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
@@ -282,7 +290,7 @@ class Trainer(object):
             output, loss, grad = self._step(inputs, target,
                                             training=training,
                                             average_output=average_output,
-                                            teacher_output=teacher_output,
+                                            teacher_batch=teacher_output,
                                             chunk_batch=chunk_batch)
 
             # measure accuracy and record loss

@@ -214,10 +214,6 @@ def main_worker(args):
     if args.model_config is not '':
         model_config = dict(model_config, **literal_eval(args.model_config))
 
-    if args.rewire_frac is not None:
-        assert(0.0 <= args.rewire_frac and args.rewire_frac <= 1.0)
-        model_config['rewire_frac'] = args.rewire_frac
-
     model = model(**model_config)
     logging.info("created model with configuration: %s", model_config)
     num_parameters = sum([l.nelement() for l in model.parameters()])
@@ -265,7 +261,7 @@ def main_worker(args):
         criterion = construct_kd_loss(args)
     else:
         criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
-    criterion.to(args.device, dtype)
+        criterion.to(args.device, dtype)
     model.to(args.device, dtype)
 
     if args.profile:
@@ -281,8 +277,7 @@ def main_worker(args):
                                               'optimizer': args.optimizer,
                                               'lr': args.lr,
                                               'momentum': args.momentum,
-                                              'weight_decay': args.weight_decay,
-                                              'rewire_frac': args.rewire_frac}])
+                                              'weight_decay': args.weight_decay}])
 
     optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
         else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)
@@ -308,9 +303,7 @@ def main_worker(args):
                       adapt_grad_norm=args.adapt_grad_norm,
                       teacher=args.teacher, teacher_path=args.teacher_path,
                       teacher_model_config=args.teacher_model_config,
-                      distill_loss=args.distill_loss,
-                      distill_alpha=args.alpha,
-                      distill_temp=args.temperature)
+                      dataset=args.dataset)
     if args.tensorwatch:
         trainer.set_watcher(filename=path.abspath(path.join(save_path, 'tensorwatch.log')),
                             port=args.tensorwatch_port)
