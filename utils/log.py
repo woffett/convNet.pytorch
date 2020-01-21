@@ -5,6 +5,7 @@ import torch
 import logging.config
 from datetime import datetime
 import json
+import csv
 
 import pandas as pd
 from bokeh.io import output_file, save, show
@@ -248,3 +249,37 @@ def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', sav
     if save_all:
         shutil.copyfile(filename, os.path.join(
             path, 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
+
+def gen_results_json(save_path, filename='results.json'):
+    config_filename = os.path.join(save_path, 'config.json')
+    with open(config_filename) as fp:
+        results_dict = json.load(fp)
+    train_prec1 = []
+    train_prec5 = []
+    train_loss = []    
+    val_prec1 = []
+    val_prec5 = []
+    val_loss = []
+
+    results_filename = os.path.join(save_path, 'results.csv')
+    with open(results_filename) as fp:
+        reader = csv.DictReader(fp)
+        for row in reader:
+            train_prec1.append(row['training prec1'])
+            train_prec5.append(row['training prec5'])
+            train_loss.append(row['training loss'])
+            val_prec1.append(row['validation prec1'])
+            val_prec5.append(row['validation prec5'])
+            val_loss.append(row['validation loss'])
+
+    results_dict['train_prec1'] = train_prec1
+    results_dict['train_prec5'] = train_prec5
+    results_dict['train_loss'] = train_loss
+    results_dict['val_prec1'] = val_prec1
+    results_dict['val_prec5'] = val_prec5
+    results_dict['val_loss'] = val_loss
+
+    with open(os.path.join(save_path, filename), 'w') as f:
+        json.dump(results_dict, f, sort_keys=True, indent=4)
+
+    

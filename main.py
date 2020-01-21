@@ -12,7 +12,7 @@ import models
 import torch.distributed as dist
 from os import path, makedirs
 from data import DataRegime, SampledDataRegime
-from utils.log import setup_logging, ResultsLog, save_checkpoint, export_args_namespace
+from utils.log import setup_logging, ResultsLog, save_checkpoint, export_args_namespace, gen_results_json
 from utils.optim import OptimRegime
 from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
@@ -141,6 +141,8 @@ parser.add_argument('--alpha', default=0.95, type=float,
                     help='Mixing hyperparam for KD loss calculation')
 parser.add_argument('--no-shuffle', default=False,
                     action='store_true', help='Turn off batch shuffling during training')
+parser.add_argument('--results-filename', default='results.json',
+                    help='name to give to results file')
 
 def main():
     args = parser.parse_args()
@@ -260,7 +262,7 @@ def main_worker(args):
     loss_params = {}
     if args.label_smoothing > 0:
         loss_params['smooth_eps'] = args.label_smoothing
-    if args.distill_loss is not None:
+    if args.distill_loss is not None and args.alpha > 0:
         criterion = construct_kd_loss(args)
     else:
         criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
@@ -431,6 +433,8 @@ def main_worker(args):
                          legend=['gradient L2 norm'],
                          title='Gradient Norm', ylabel='value')
         results.save()
+
+    gen_results_json(save_path, args.results_filename)
 
 
 if __name__ == '__main__':
