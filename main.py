@@ -114,6 +114,8 @@ parser.add_argument('--loss-scale', default=1, type=float,
                     help='loss scale for mixed precision training.')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
+parser.add_argument('--lr-decay', default=0.1, type=float,
+                    help='learning rate decay rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=0, type=float,
@@ -279,6 +281,12 @@ def main_worker(args):
                                               'lr': args.lr,
                                               'momentum': args.momentum,
                                               'weight_decay': args.weight_decay}])
+
+    if isinstance(optim_regime, list):
+        for i, reg in enumerate(optim_regime):
+            reg['lr'] = args.lr * (args.lr_decay ** i)
+
+        logging.info('Set learning rates in regime: ' + str(optim_regime))
 
     optimizer = optim_regime if isinstance(optim_regime, OptimRegime) \
         else OptimRegime(model, optim_regime, use_float_copy='half' in args.dtype)
