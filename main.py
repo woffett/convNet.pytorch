@@ -137,7 +137,8 @@ parser.add_argument('--temperature', default=6.0 , type=float,
                     help='Temperature for KD loss calculation')
 parser.add_argument('--alpha', default=0.95, type=float,
                     help='Mixing hyperparam for KD loss calculation')
-
+parser.add_argument('--no-shuffle', default=False, type=bool,
+                    action='store_true', help='Turn off batch shuffling during training')
 
 def main():
     args = parser.parse_args()
@@ -334,7 +335,7 @@ def main_worker(args):
                            'augment': True,
                            'input_size': args.input_size,
                            'batch_size': args.batch_size,
-                           'shuffle': True,
+                           'shuffle': not args.no_shuffle,
                            'num_workers': args.workers,
                            'pin_memory': True,
                            'drop_last': True,
