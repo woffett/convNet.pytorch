@@ -137,7 +137,7 @@ parser.add_argument('--temperature', default=6.0 , type=float,
                     help='Temperature for KD loss calculation')
 parser.add_argument('--alpha', default=0.95, type=float,
                     help='Mixing hyperparam for KD loss calculation')
-parser.add_argument('--no-shuffle', default=False, type=bool,
+parser.add_argument('--no-shuffle', default=False,
                     action='store_true', help='Turn off batch shuffling during training')
 
 def main():
