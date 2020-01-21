@@ -52,7 +52,7 @@ parser.add_argument('--input-size', type=int, default=None,
 parser.add_argument('--model-config', default='',
                     help='additional architecture configuration')
 parser.add_argument('--distill-loss', default=None,
-                    choices=[None, 'hinton', 'caruana'])
+                    choices=['ce', 'kldiv', 'mse'])
 parser.add_argument('--teacher', metavar='TEACHER', default=None,
                     choices=model_names + [None],
                     help='teacher model architecture: ' +
@@ -137,7 +137,7 @@ parser.add_argument('--tensorwatch-port', default=0, type=int,
 parser.add_argument('--profile', action='store_true', default=False)
 parser.add_argument('--temperature', default=6.0 , type=float,
                     help='Temperature for KD loss calculation')
-parser.add_argument('--alpha', default=0.95, type=float,
+parser.add_argument('--alpha', default=0.0, type=float,
                     help='Mixing hyperparam for KD loss calculation')
 parser.add_argument('--no-shuffle', default=False,
                     action='store_true', help='Turn off batch shuffling during training')
@@ -157,6 +157,7 @@ def main():
 def main_worker(args):
     global best_prec1, dtype
     best_prec1 = 0
+    best_prec5 = 0
     dtype = torch_dtypes.get(args.dtype)
     torch.manual_seed(args.seed)
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -390,6 +391,7 @@ def main_worker(args):
         # remember best prec@1 and save checkpoint
         is_best = val_results['prec1'] > best_prec1
         best_prec1 = max(val_results['prec1'], best_prec1)
+        best_prec5 = max(val_results['prec5'], best_prec5)
 
         if args.drop_optim_state:
             optim_state_dict = None
@@ -434,7 +436,7 @@ def main_worker(args):
                          title='Gradient Norm', ylabel='value')
         results.save()
 
-    gen_results_json(save_path, args.results_filename)
+    gen_results_json(save_path,  best_prec1, best_prec5, filename=args.results_filename)
 
 
 if __name__ == '__main__':

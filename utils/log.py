@@ -250,10 +250,10 @@ def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', sav
         shutil.copyfile(filename, os.path.join(
             path, 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
 
-def gen_results_json(save_path, filename='results.json'):
+def gen_results_json(save_path, best_prec1, best_prec5, filename='results.json'):
     config_filename = os.path.join(save_path, 'config.json')
     with open(config_filename) as fp:
-        results_dict = json.load(fp)
+        master_dict = json.load(fp)
     train_prec1 = []
     train_prec5 = []
     train_loss = []    
@@ -265,13 +265,14 @@ def gen_results_json(save_path, filename='results.json'):
     with open(results_filename) as fp:
         reader = csv.DictReader(fp)
         for row in reader:
-            train_prec1.append(row['training prec1'])
-            train_prec5.append(row['training prec5'])
-            train_loss.append(row['training loss'])
-            val_prec1.append(row['validation prec1'])
-            val_prec5.append(row['validation prec5'])
-            val_loss.append(row['validation loss'])
+            train_prec1.append(float(row['training prec1']))
+            train_prec5.append(float(row['training prec5']))
+            train_loss.append(float(row['training loss']))
+            val_prec1.append(float(row['validation prec1']))
+            val_prec5.append(float(row['validation prec5']))
+            val_loss.append(float(row['validation loss']))
 
+    results_dict = dict()
     results_dict['train_prec1'] = train_prec1
     results_dict['train_prec5'] = train_prec5
     results_dict['train_loss'] = train_loss
@@ -279,7 +280,14 @@ def gen_results_json(save_path, filename='results.json'):
     results_dict['val_prec5'] = val_prec5
     results_dict['val_loss'] = val_loss
 
+    results_dict['final_prec1'] = float(row['validation prec1'])
+    results_dict['final_prec5'] = float(row['validation prec5'])
+    results_dict['best_prec1'] = best_prec1
+    results_dict['best_prec5'] = best_prec5
+
+    master_dict['results'] = results_dict
+
     with open(os.path.join(save_path, filename), 'w') as f:
-        json.dump(results_dict, f, sort_keys=True, indent=4)
+        json.dump(master_dict, f, sort_keys=True, indent=4)
 
     
