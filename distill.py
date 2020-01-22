@@ -80,5 +80,11 @@ def construct_kd_loss(args):
 
     if alpha == 0.0:
         return ce_loss
+    
+    if args.distill_loss == 'ce' and alpha > 0.0:
+        raise Exception('Cannot specify non-zero alpha with CE loss!')
+
+    if args.distill_loss == 'kldiv' and args.temperature is None:
+        raise Exception('Must specify temperature for KLDiv loss!')
 
     return losses[args.distill_loss]
