@@ -163,8 +163,8 @@ def main_worker(args):
     if args.evaluate:
         args.results_dir = '/tmp'
     # avner-format directory structure
-    save_path = get_savepath(args)
-    runname = get_runname(parser, dict(args._get_kwargs()))
+    save_path = get_savepath(parser, args)
+    full_runname = get_runname(parser, dict(args._get_kwargs()), full=True)
 
     if not path.exists(save_path):
         makedirs(save_path)
@@ -185,11 +185,11 @@ def main_worker(args):
         else:
             args.device_ids = [args.local_rank]
 
-    setup_logging(path.join(save_path, runname + '.log'),
+    setup_logging(path.join(save_path, full_runname + '.log'),
                   resume=args.resume is not '',
                   dummy=args.distributed and args.local_rank > 0)
 
-    results_path = path.join(save_path, runname + '_results')
+    results_path = path.join(save_path, full_runname + '_results')
     results = ResultsLog(results_path,
                          title='Training Results')
 
@@ -314,7 +314,8 @@ def main_worker(args):
                       teacher_model_config=args.teacher_model_config,
                       dataset=args.dataset)
     if args.tensorwatch:
-        trainer.set_watcher(filename=path.abspath(path.join(save_path, runname + '_tensorwatch.log')),
+        trainer.set_watcher(filename=path.abspath(path.join(save_path,
+                                                            full_runname + '_tensorwatch.log')),
                             port=args.tensorwatch_port)
 
     # Evaluation Data loading code
@@ -395,17 +396,21 @@ def main_worker(args):
         else:
             optim_state_dict = optimizer.state_dict()
 
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'model': args.model,
-            'config': args.model_config,
-            'state_dict': model.state_dict(),
-            'optim_state_dict': optim_state_dict,
-            'best_prec1': best_prec1
-        }, is_best,
-                        path=save_path,
-                        filename=runname + '_checkpoint.pth.tar',
-                        save_all=args.save_all)
+        save_checkpoint(
+            {
+                'epoch': epoch + 1,
+                'model': args.model,
+                'config': args.model_config,
+                'state_dict': model.state_dict(),
+                'optim_state_dict': optim_state_dict,
+                'best_prec1': best_prec1
+            },
+            is_best,
+            path=save_path,
+            filename=full_runname + '_checkpoint.pth.tar',
+            runname=full_runname + '_',
+            save_all=args.save_all
+        )
 
         logging.info('\nResults - Epoch: {0}\n'
                      'Training Loss {train[loss]:.4f} \t'
@@ -436,7 +441,7 @@ def main_worker(args):
                          title='Gradient Norm', ylabel='value')
         results.save()
 
-    gen_results_json(args, save_path, best_prec1, best_prec5, runname)
+    gen_results_json(args, save_path, best_prec1, best_prec5, full_runname)
 
 
 if __name__ == '__main__':

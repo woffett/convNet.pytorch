@@ -36,7 +36,7 @@ def non_default_args(parser, config):
     return non_default
             
 
-def get_runname(parser, config):
+def get_runname(parser, config, full=False):
     runname = ''
     to_skip = (
         'config_file',
@@ -84,12 +84,15 @@ def get_runname(parser, config):
         if (key not in to_skip) or (key in required):
             runname += '{},{}_'.format(key, val)
     # remove the final '_' from runname
+    if full:
+        runname = 'rungroup,' + config['rungroup_name'] + '_' + runname
     return runname[:-1] if runname[-1] == '_' else runname
 
-def get_savepath(args):
+def get_savepath(parser, args):
     basedir = args.results_dir
     rungroup = '{}-{}'.format(get_date_str(), args.rungroup_name)
-    return os.path.join(basedir, rungroup)
+    runname = get_runname(parser, dict(args._get_kwargs()))
+    return os.path.join(basedir, rungroup, runname)
 
 def export_args_namespace(args, filename):
     """
@@ -312,14 +315,16 @@ class ResultsLog(object):
             self.hd_experiment.end()
 
 
-def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', save_all=False):
+def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar',
+                    runname='', save_all=False):
     filename = os.path.join(path, filename)
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, os.path.join(path, 'model_best.pth.tar'))
+        shutil.copyfile(filename, os.path.join(path,
+                                               runname + 'model_best.pth.tar'))
     if save_all:
         shutil.copyfile(filename, os.path.join(
-            path, 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
+            path, runname + 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
 
 def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
     master_dict = dict(args._get_kwargs())
