@@ -81,7 +81,7 @@ def get_runname(parser, config):
         'temperature'
     )
     for key, val in non_default_args(parser, config):
-        if key not in to_skip:
+        if (key not in to_skip) or (key in required):
             runname += '{},{}_'.format(key, val)
     # remove the final '_' from runname
     return runname[:-1] if runname[-1] == '_' else runname
