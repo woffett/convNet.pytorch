@@ -55,7 +55,7 @@ def cmds_1_21_20_tune_kd_models():
                       '--results-dir {} --datasets-dir {} --dataset {} --input-size {} --dtype {} --autoaugment '
                       '--device cuda --epochs {} --batch-size {} --weight-decay {} --print-freq 10 --seed {} '
                       '--teacher {} --teacher-model-config {} --teacher-path {} --model {} --model-config {} '
-                      '--no-shuffle --rungroup-name {} --distill-loss {} --alpha {} --temperature {} --lr {}" '
+                      '--no-shuffle --rungroup-name {} --distill-loss {} --alpha {} --lr {}{}" '
                       '/proj/distill/git/convNet.pytorch/ml_env.sh\n')
     results_dir = '/proj/distill/results'
     data_dir = '/proj/distill/data'
@@ -83,13 +83,14 @@ def cmds_1_21_20_tune_kd_models():
             temps = mse_temps if loss == 'mse' else kldiv_temps
             for alpha in alphas:
                 for temp in temps:
+                    temp_str = ' --temperature {}'.format(temp) if loss == 'kldiv' else ''
                     for lr in lrs:
                         f.write(cmd_format_str.format(
                             results_dir, data_dir, dataset, input_size, dtype,
                             epochs, batch_size, weight_decay, seed,
                             teacher_model, teacher_model_config, teacher_path, student_model, student_model_config,
-                            rungroup, loss, alpha, temp, lr
-                            ))
+                            rungroup, loss, alpha, lr, temp_str
+                        ))
 
 if __name__ == '__main__':
     # cmds_1_16_20_train_base_models()
