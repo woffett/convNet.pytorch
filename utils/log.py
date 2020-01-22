@@ -3,7 +3,7 @@ import os
 from itertools import cycle
 import torch
 import logging.config
-from datetime import datetime
+import datetime
 import json
 import csv
 
@@ -19,6 +19,77 @@ try:
 except ImportError:
     HYPERDASH_AVAILABLE = False
 
+def get_date_str():
+    return '{:%Y-%m-%d}'.format(datetime.date.today())
+
+def non_default_args(parser, config):
+    non_default = []
+    for action in parser._actions:
+        default = action.default
+        key = action.dest
+        if key == 'help':
+            continue
+        val = config[key]
+        if val != default:
+            non_default.append((key,val))
+    assert len(non_default) > 0, 'There must be a non-default arg'
+    return non_default
+            
+
+def get_runname(parser, config):
+    runname = ''
+    to_skip = (
+        'config_file',
+        'results_dir',
+        'rungroup_name',
+        'datasets_dir',
+        'input_size',
+        'model_config',
+        'teacher_path',
+        'teacher_model_config',
+        'dtype',
+        'device',
+        'device_ids',
+        'world-size',
+        'local_rank',
+        'dist_init',
+        'dist_backend',
+        'workers',
+        'epochs',
+        'Start_epoch',
+        'drop_optim_state',
+        'save_all',
+        'label_smoothing',
+        'mixup',
+        'cutmix',
+        'duplicates',
+        'chunk_batch',
+        'cutout',
+        'autoaugment',
+        'print_freq',
+        'adapt_grad_norm',
+        'resume',
+        'evaluate',
+        'tensorwatch',
+        'tensorwatch_port',
+        'profile',
+        'results_filename'
+    )
+    required = (
+        'distill_loss',
+        'alpha',
+        'temperature'
+    )
+    for key, val in non_default_args(parser, config):
+        if (key not in to_skip) or (key in required):
+            runname += '{},{}_'.format(key, val)
+    # remove the final '_' from runname
+    return runname[:-1] if runname[-1] == '_' else runname
+
+def get_savepath(args):
+    basedir = args.results_dir
+    rungroup = '{}-{}'.format(get_date_str(), args.rungroup_name)
+    return os.path.join(basedir, rungroup)
 
 def export_args_namespace(args, filename):
     """
@@ -250,10 +321,8 @@ def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar', sav
         shutil.copyfile(filename, os.path.join(
             path, 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
 
-def gen_results_json(save_path, filename='results.json'):
-    config_filename = os.path.join(save_path, 'config.json')
-    with open(config_filename) as fp:
-        results_dict = json.load(fp)
+def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
+    master_dict = dict(args._get_kwargs())
     train_prec1 = []
     train_prec5 = []
     train_loss = []    
@@ -261,17 +330,18 @@ def gen_results_json(save_path, filename='results.json'):
     val_prec5 = []
     val_loss = []
 
-    results_filename = os.path.join(save_path, 'results.csv')
+    results_filename = os.path.join(save_path, runname + '_results.csv')
     with open(results_filename) as fp:
         reader = csv.DictReader(fp)
         for row in reader:
-            train_prec1.append(row['training prec1'])
-            train_prec5.append(row['training prec5'])
-            train_loss.append(row['training loss'])
-            val_prec1.append(row['validation prec1'])
-            val_prec5.append(row['validation prec5'])
-            val_loss.append(row['validation loss'])
+            train_prec1.append(float(row['training prec1']))
+            train_prec5.append(float(row['training prec5']))
+            train_loss.append(float(row['training loss']))
+            val_prec1.append(float(row['validation prec1']))
+            val_prec5.append(float(row['validation prec5']))
+            val_loss.append(float(row['validation loss']))
 
+    results_dict = dict()
     results_dict['train_prec1'] = train_prec1
     results_dict['train_prec5'] = train_prec5
     results_dict['train_loss'] = train_loss
@@ -279,7 +349,14 @@ def gen_results_json(save_path, filename='results.json'):
     results_dict['val_prec5'] = val_prec5
     results_dict['val_loss'] = val_loss
 
-    with open(os.path.join(save_path, filename), 'w') as f:
-        json.dump(results_dict, f, sort_keys=True, indent=4)
+    results_dict['final_prec1'] = float(row['validation prec1'])
+    results_dict['final_prec5'] = float(row['validation prec5'])
+    results_dict['best_prec1'] = best_prec1
+    results_dict['best_prec5'] = best_prec5
+
+    master_dict['results'] = results_dict
+
+    with open(os.path.join(save_path, runname + '_results.json'), 'w') as f:
+        json.dump(master_dict, f, sort_keys=True, indent=4)
 
     

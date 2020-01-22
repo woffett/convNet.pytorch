@@ -62,17 +62,29 @@ def construct_kd_loss(args):
     alpha = args.alpha
     T = args.temperature
 
-    def caruana_loss(outputs, labels, teacher_outputs):
+    def ce_loss(outputs, labels, teacher_outputs):
+        return CE(outputs, labels)
+
+    def mse_loss(outputs, labels, teacher_outputs):
         mse = MSE(outputs, teacher_outputs)
         ce = CE(outputs, labels)
         return (mse * alpha) + (ce * (1.0 - alpha))
 
-    def hinton_loss(outputs, labels, teacher_outputs):
+    def kldiv_loss(outputs, labels, teacher_outputs):
         kl = KLDiv(F.log_softmax(outputs / T, dim=1),
                    F.softmax(teacher_outputs / T, dim=1))
         ce = CE(outputs, labels)
         return (kl * alpha * T * T) + (ce * (1.0 - alpha))
 
-    losses = {'hinton': hinton_loss, 'caruana': caruana_loss}
+    losses = {'kldiv': kldiv_loss, 'mse': mse_loss, 'ce': ce_loss}
+
+    if alpha == 0.0:
+        return ce_loss
+    
+    if args.distill_loss == 'ce' and alpha > 0.0:
+        raise Exception('Cannot specify non-zero alpha with CE loss!')
+
+    if args.distill_loss == 'kldiv' and args.temperature is None:
+        raise Exception('Must specify temperature for KLDiv loss!')
 
     return losses[args.distill_loss]

@@ -12,7 +12,8 @@ import models
 import torch.distributed as dist
 from os import path, makedirs
 from data import DataRegime, SampledDataRegime
-from utils.log import setup_logging, ResultsLog, save_checkpoint, export_args_namespace, gen_results_json
+from utils.log import setup_logging, ResultsLog, save_checkpoint, \
+    export_args_namespace, gen_results_json, get_savepath, get_runname
 from utils.optim import OptimRegime
 from utils.cross_entropy import CrossEntropyLoss
 from utils.misc import torch_dtypes
@@ -36,8 +37,8 @@ parser.add_argument('--config-file', default=None,
                     help='json configuration file')
 parser.add_argument('--results-dir', metavar='RESULTS_DIR', default='./results',
                     help='results dir')
-parser.add_argument('--save', metavar='SAVE', default='',
-                    help='saved folder')
+parser.add_argument('--rungroup-name', default='',
+                    help='name of the rungroup')
 parser.add_argument('--datasets-dir', metavar='DATASETS_DIR', default='~/Datasets',
                     help='datasets dir')
 parser.add_argument('--dataset', metavar='DATASET', default='imagenet',
@@ -52,7 +53,7 @@ parser.add_argument('--input-size', type=int, default=None,
 parser.add_argument('--model-config', default='',
                     help='additional architecture configuration')
 parser.add_argument('--distill-loss', default=None,
-                    choices=[None, 'hinton', 'caruana'])
+                    choices=['ce', 'kldiv', 'mse'])
 parser.add_argument('--teacher', metavar='TEACHER', default=None,
                     choices=model_names + [None],
                     help='teacher model architecture: ' +
@@ -135,14 +136,12 @@ parser.add_argument('--tensorwatch', action='store_true', default=False,
 parser.add_argument('--tensorwatch-port', default=0, type=int,
                     help='set tensorwatch port')
 parser.add_argument('--profile', action='store_true', default=False)
-parser.add_argument('--temperature', default=6.0 , type=float,
+parser.add_argument('--temperature', default=None , type=float,
                     help='Temperature for KD loss calculation')
-parser.add_argument('--alpha', default=0.95, type=float,
+parser.add_argument('--alpha', default=0.0, type=float,
                     help='Mixing hyperparam for KD loss calculation')
 parser.add_argument('--no-shuffle', default=False,
                     action='store_true', help='Turn off batch shuffling during training')
-parser.add_argument('--results-filename', default='results.json',
-                    help='name to give to results file')
 
 def main():
     args = parser.parse_args()
@@ -157,15 +156,19 @@ def main():
 def main_worker(args):
     global best_prec1, dtype
     best_prec1 = 0
+    best_prec5 = 0
     dtype = torch_dtypes.get(args.dtype)
     torch.manual_seed(args.seed)
     time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if args.evaluate:
         args.results_dir = '/tmp'
-    if args.save is '':
-        args.save = time_stamp
-    save_path = path.join(args.results_dir, args.save)
+    # avner-format directory structure
+    save_path = get_savepath(args)
+    runname = get_runname(parser, dict(args._get_kwargs()))
 
+    if not path.exists(save_path):
+        makedirs(save_path)
+    
     args.distributed = args.local_rank >= 0 or args.world_size > 1
 
     # profiling tool
@@ -182,18 +185,13 @@ def main_worker(args):
         else:
             args.device_ids = [args.local_rank]
 
-    if not (args.distributed and args.local_rank > 0):
-        if not path.exists(save_path):
-            makedirs(save_path)
-        export_args_namespace(args, path.join(save_path, 'config.json'))
-
-    setup_logging(path.join(save_path, 'log.txt'),
+    setup_logging(path.join(save_path, runname + '.log'),
                   resume=args.resume is not '',
                   dummy=args.distributed and args.local_rank > 0)
 
-    results_path = path.join(save_path, 'results')
+    results_path = path.join(save_path, runname + '_results')
     results = ResultsLog(results_path,
-                         title='Training Results - %s' % args.save)
+                         title='Training Results')
 
     logging.info("saving to %s", save_path)
     logging.debug("run arguments: %s", args)
@@ -262,7 +260,7 @@ def main_worker(args):
     loss_params = {}
     if args.label_smoothing > 0:
         loss_params['smooth_eps'] = args.label_smoothing
-    if args.distill_loss is not None and args.alpha > 0:
+    if args.teacher is not None:
         criterion = construct_kd_loss(args)
     else:
         criterion = getattr(model, 'criterion', CrossEntropyLoss)(**loss_params)
@@ -316,7 +314,7 @@ def main_worker(args):
                       teacher_model_config=args.teacher_model_config,
                       dataset=args.dataset)
     if args.tensorwatch:
-        trainer.set_watcher(filename=path.abspath(path.join(save_path, 'tensorwatch.log')),
+        trainer.set_watcher(filename=path.abspath(path.join(save_path, runname + '_tensorwatch.log')),
                             port=args.tensorwatch_port)
 
     # Evaluation Data loading code
@@ -390,6 +388,7 @@ def main_worker(args):
         # remember best prec@1 and save checkpoint
         is_best = val_results['prec1'] > best_prec1
         best_prec1 = max(val_results['prec1'], best_prec1)
+        best_prec5 = max(val_results['prec5'], best_prec5)
 
         if args.drop_optim_state:
             optim_state_dict = None
@@ -403,7 +402,10 @@ def main_worker(args):
             'state_dict': model.state_dict(),
             'optim_state_dict': optim_state_dict,
             'best_prec1': best_prec1
-        }, is_best, path=save_path, save_all=args.save_all)
+        }, is_best,
+                        path=save_path,
+                        filename=runname + '_checkpoint.pth.tar',
+                        save_all=args.save_all)
 
         logging.info('\nResults - Epoch: {0}\n'
                      'Training Loss {train[loss]:.4f} \t'
@@ -434,7 +436,7 @@ def main_worker(args):
                          title='Gradient Norm', ylabel='value')
         results.save()
 
-    gen_results_json(save_path, args.results_filename)
+    gen_results_json(args, save_path, best_prec1, best_prec5, runname)
 
 
 if __name__ == '__main__':
