@@ -74,7 +74,7 @@ def cmds_1_21_20_tune_kd_models():
     lrs = [0.01, 0.03, 0.1, 0.3, 1] # 5
     alphas = [0, 0.1, 0.5, 0.9, 1] # 5
     kldiv_temps = [0.1, 1, 10, 100] # 4
-    mse_temps = [0]
+    mse_temps = [0] # 1
     losses = ['mse','kldiv'] # 2
 
     with open(filename,'w') as f:
@@ -92,4 +92,5 @@ def cmds_1_21_20_tune_kd_models():
                             ))
 
 if __name__ == '__main__':
-    cmds_1_16_20_train_base_models()
+    # cmds_1_16_20_train_base_models()
+    cmds_1_21_20_tune_kd_models()
