@@ -33,3 +33,6 @@ def plot_distillation_tune_hp_results():
         }
     plot_driver(all_results, None, info_per_line, 'alpha', 'best_prec1')
     plt.savefig('/proj/distill/results/2020-01-22-tuneDistillHP/figures/mse_tune_hp_results.pdf')
+
+if __name__ == '__main__':
+    plot_distillation_tune_hp_results()
