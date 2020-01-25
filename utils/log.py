@@ -2,10 +2,13 @@ import shutil
 import os
 from itertools import cycle
 import torch
+import logging
 import logging.config
 import datetime
 import json
 import csv
+import subprocess
+import pathlib
 
 import pandas as pd
 from bokeh.io import output_file, save, show
@@ -326,6 +329,35 @@ def save_checkpoint(state, is_best, path='.', filename='checkpoint.pth.tar',
         shutil.copyfile(filename, os.path.join(
             path, runname + 'checkpoint_epoch_%s.pth.tar' % state['epoch']))
 
+def is_windows():
+    """Determine if running on windows OS."""
+    return os.name == 'nt'
+    
+def get_git_hash_and_diff(git_repo_dir=None, log=True, debug=False):
+    git_hash = None
+    git_diff = None
+    if not is_windows():
+        try:
+            wd = os.getcwd()
+            if git_repo_dir is None:
+                git_repo_dir = pathlib.Path(__file__).parent.absolute()
+            os.chdir(git_repo_dir)
+            git_hash = str(subprocess.check_output(
+                ['git','rev-parse','--short','HEAD']).strip())[2:9]
+            git_diff = str(subprocess.check_output(['git','diff']).strip())[3:]
+            if not debug:
+                # if not in debug mode, local repo changes are not allowed.
+                assert git_diff == '', 'Cannot have any local changes'
+            os.chdir(wd)
+            if log:
+                logging.info('Git hash {}'.format(git_hash))
+                logging.info('Git diff {}'.format(git_diff))
+        except FileNotFoundError:
+            if log:
+                logging.info('Unable to get git hash.')
+    return git_hash, git_diff
+
+
 def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
     master_dict = dict(args._get_kwargs())
     train_prec1 = []
@@ -361,7 +393,7 @@ def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
 
     master_dict['results'] = results_dict
 
+    master_dict['githash'], master_dict['gitdiff'] = get_git_hash_and_diff()
+
     with open(os.path.join(save_path, runname + '_results.json'), 'w') as f:
         json.dump(master_dict, f, sort_keys=True, indent=4)
-
-    
