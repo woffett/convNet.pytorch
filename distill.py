@@ -68,12 +68,16 @@ def construct_kd_loss(args):
     def mse_loss(outputs, labels, teacher_outputs):
         mse = MSE(outputs, teacher_outputs)
         ce = CE(outputs, labels)
+        if alpha == 0.0:
+            return ce
         return (mse * alpha) + (ce * (1.0 - alpha))
 
     def kldiv_loss(outputs, labels, teacher_outputs):
         kl = KLDiv(F.log_softmax(outputs / T, dim=1),
                    F.softmax(teacher_outputs / T, dim=1))
         ce = CE(outputs, labels)
+        if alpha == 0.0:
+            return ce
         return (kl * alpha * T * T) + (ce * (1.0 - alpha))
 
     losses = {'kldiv': kldiv_loss, 'mse': mse_loss, 'ce': ce_loss}
