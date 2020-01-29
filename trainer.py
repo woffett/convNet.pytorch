@@ -159,7 +159,7 @@ class Trainer(object):
         student_activations = self.student_train_activations if training else self.student_val_activations
         student_svd = torch.svd(student_activations)
         student_U = student_svd.U
-        torch.norm(student_U.t() @ teacher_U)**2 / teacher_U.shape[1]
+        return torch.norm(student_U.t() @ teacher_U)**2 / teacher_U.shape[1]
 
     def _grad_norm(self, inputs_batch, target_batch, chunk_batch=1):
         self.model.zero_grad()
