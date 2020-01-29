@@ -144,6 +144,8 @@ parser.add_argument('--beta', default=0.0, type=float,
                     help='Second mixing hyperparam for KD loss calculation')
 parser.add_argument('--no-shuffle', default=False,
                     action='store_true', help='Turn off batch shuffling during training')
+parser.add_argument('--debug', default=False,
+                    action='store_true', help='Set to True to allow local changes when running experiments.')
 
 def main():
     args = parser.parse_args()

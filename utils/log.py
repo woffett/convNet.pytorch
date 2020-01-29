@@ -412,7 +412,7 @@ def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
 
     master_dict['results'] = results_dict
 
-    master_dict['githash'], master_dict['gitdiff'] = get_git_hash_and_diff()
+    master_dict['githash'], master_dict['gitdiff'] = get_git_hash_and_diff(debug=args.debug)
 
     with open(os.path.join(save_path, runname + '_results.json'), 'w') as f:
         json.dump(master_dict, f, sort_keys=True, indent=4)
