@@ -53,17 +53,17 @@ def construct_kd_loss(args):
     beta = args.beta
     T = args.temperature
 
-    def ce_loss(outputs, labels, teacher_outputs):
+    def ce_loss(outputs, activations, teacher_outputs, teacher_U, P, eos_scale, labels):
         return CE(outputs, labels)
 
-    def mse_loss(outputs, labels, teacher_outputs):
+    def mse_loss(outputs, activations, teacher_outputs, teacher_U, P, eos_scale, labels):
         mse = MSE(outputs, teacher_outputs)
         ce = CE(outputs, labels)
         if alpha == 0.0:
             return ce
         return (mse * alpha) + (ce * (1.0 - alpha))
 
-    def kldiv_loss(outputs, labels, teacher_outputs):
+    def kldiv_loss(outputs, activations, teacher_outputs, teacher_U, P, eos_scale, labels):
         kl = KLDiv(F.log_softmax(outputs / T, dim=1),
                    F.softmax(teacher_outputs / T, dim=1))
         ce = CE(outputs, labels)
@@ -71,8 +71,8 @@ def construct_kd_loss(args):
             return ce
         return (kl * alpha * T * T) + (ce * (1.0 - alpha))
 
-    def eos_loss(outputs, activations, teacher_output, teacher_U, P, eos_scale, labels):
-        mse = MSE(outputs, teacher_output)  if alpha > 0 else 0
+    def eos_loss(outputs, activations, teacher_outputs, teacher_U, P, eos_scale, labels):
+        mse = MSE(outputs, teacher_outputs)  if alpha > 0 else 0
         eos = MSE(activations @ P, teacher_U) * eos_scale if beta > 0 else 0
         ce = CE(outputs, labels) if (1 - alpha - beta) > 0 else 0
         return (mse * alpha) + (eos * beta) + (ce * (1.0 - alpha - beta))
