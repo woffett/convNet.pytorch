@@ -53,7 +53,7 @@ parser.add_argument('--input-size', type=int, default=None,
 parser.add_argument('--model-config', default='',
                     help='additional architecture configuration')
 parser.add_argument('--distill-loss', default=None,
-                    choices=['ce', 'kldiv', 'mse'])
+                    choices=['ce', 'kldiv', 'mse', 'eos'])
 parser.add_argument('--teacher', metavar='TEACHER', default=None,
                     choices=model_names + [None],
                     help='teacher model architecture: ' +
@@ -139,7 +139,9 @@ parser.add_argument('--profile', action='store_true', default=False)
 parser.add_argument('--temperature', default=None , type=float,
                     help='Temperature for KD loss calculation')
 parser.add_argument('--alpha', default=0.0, type=float,
-                    help='Mixing hyperparam for KD loss calculation')
+                    help='First mixing hyperparam for KD loss calculation')
+parser.add_argument('--beta', default=0.0, type=float,
+                    help='Second mixing hyperparam for KD loss calculation')
 parser.add_argument('--no-shuffle', default=False,
                     action='store_true', help='Turn off batch shuffling during training')
 
@@ -151,7 +153,11 @@ def main():
         parser.set_defaults(**config_dict)
         args = parser.parse_args()
 
+    validate_args(args)
     main_worker(args)
+
+def validate_args(args):
+    assert args.alpha >= 0 and args.beta >= 0 and (args.alpha + args.beta) <= 1, 'alpha and beta must be positive, with alpha + beta <= 1'
 
 def main_worker(args):
     global best_prec1, dtype
@@ -370,6 +376,8 @@ def main_worker(args):
     logging.info('data regime: %s', train_data)
     args.start_epoch = max(args.start_epoch, 0)
     trainer.training_steps = args.start_epoch * len(train_data)
+    if trainer.teacher is not None:
+        trainer._set_student_and_teacher_outputs(train_data.get_loader(), val_data.get_loader())
     for epoch in range(args.start_epoch, args.epochs):
         trainer.epoch = epoch
         train_data.set_epoch(epoch)
@@ -435,6 +443,9 @@ def main_worker(args):
         results.plot(x='epoch', y=['training error5', 'validation error5'],
                      legend=['training', 'validation'],
                      title='Error@5', ylabel='error %')
+        results.plot(x='epoch', y=['training eos', 'validation eos'],
+                     legend=['training', 'validation'],
+                     title='EOS', ylabel='EOS')
         if 'grad' in train_results.keys():
             results.plot(x='epoch', y=['training grad'],
                          legend=['gradient L2 norm'],

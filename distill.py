@@ -12,39 +12,29 @@ from datetime import datetime
 from utils.log import setup_logging, save_checkpoint, export_args_namespace
 from utils.misc import torch_dtypes
 
-def fetch_teacher_outputs(teacher_model, loader, teacher_path, dataset,
-                          train=True, device='cpu'):
+def fetch_model_outputs(model, loader, device='cpu', return_activations=False):
     '''
-    Perform a single forward pass of the whole dataset to obtain
-    the teacher model's logits.
+    Perform a single forward pass of the whole dataset to obtain the model's logits.
     
     Inspired by: 
        https://github.com/peterliht/knowledge-distillation-pytorch/blob/master/train.py
     '''
-    
-    teacher_dir = os.path.dirname(teacher_path)
-    train_str = 'train' if train else 'val'
-    output_path = os.path.join(teacher_dir, '%s_%s_outputs.pt' % (dataset,train_str))
-    if os.path.exists(output_path):
-        logging.info('Found saved teacher %s outputs!' % train_str)
-        outputs = torch.load(output_path)
-        return outputs
-
-    logging.info('Generating teacher %s outputs...' % train_str)
+    logging.info('Generating model %s outputs')
     cuda = 'cuda' in device and torch.cuda.is_available()
-    teacher_model.eval()
-    if cuda:
-        teacher_model = teacher_model.to(device)
     outputs = []
-    for i, (inps, _) in enumerate(loader):
+    activations = []
+    for (inps, _) in loader:
         if cuda:
             inps = inps.to(device)
-        outputs.append(teacher_model(inps).data.cpu().numpy())
-
-    torch.save(outputs, output_path)
+        if return_activations:
+            curr_output, curr_activations = model.forward(inps, return_activations=return_activations)
+            outputs.append(curr_output)
+            activations.append(curr_activations)
+        else:
+            curr_output = model.forward(inps, return_activations=return_activations)
+            outputs.append(curr_output)
     logging.info('Done!')
-
-    return outputs
+    return (torch.cat(outputs),torch.cat(activations)) if return_activations else torch.cat(outputs)
 
 def construct_kd_loss(args):
     '''
@@ -60,6 +50,7 @@ def construct_kd_loss(args):
     CE = nn.CrossEntropyLoss().to(args.device, dtype)
     MSE = nn.MSELoss().to(args.device, dtype)
     alpha = args.alpha
+    beta = args.beta
     T = args.temperature
 
     def ce_loss(outputs, labels, teacher_outputs):
@@ -80,7 +71,13 @@ def construct_kd_loss(args):
             return ce
         return (kl * alpha * T * T) + (ce * (1.0 - alpha))
 
-    losses = {'kldiv': kldiv_loss, 'mse': mse_loss, 'ce': ce_loss}
+    def eos_loss(outputs, activations, teacher_output, teacher_activations, P, eos_scale, labels):
+        mse = MSE(outputs, teacher_output)  if alpha > 0 else 0
+        eos = MSE(activations @ P, teacher_activations) * eos_scale if beta > 0 else 0
+        ce = CE(outputs, labels) if (1 - alpha - beta) > 0 else 0
+        return (mse * alpha) + (eos * beta) + (ce * (1.0 - alpha - beta))
+
+    losses = {'kldiv': kldiv_loss, 'mse': mse_loss, 'eos': eos_loss, 'ce': ce_loss}
 
     if alpha == 0.0:
         return ce_loss

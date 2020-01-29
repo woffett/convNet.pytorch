@@ -170,12 +170,15 @@ class MobileNet(nn.Module):
                     {'epoch': 80, 'lr': 1e-4}
                 ]
 
-    def forward(self, x):
+    def forward(self, x, return_activations=False):
         x = self.features(x)
         x = self.avg_pool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-        return x
+        last_hidden = x.view(x.size(0), -1)
+        output = self.fc(last_hidden)
+        if return_activations:
+            return output, last_hidden
+        else:
+            return output
 
 
 def mobilenet(**config):

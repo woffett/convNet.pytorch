@@ -8,7 +8,7 @@ from torch.nn.utils import clip_grad_norm_
 from utils.meters import AverageMeter, accuracy
 from utils.mixup import MixUp, CutMix
 from random import sample
-from distill import fetch_teacher_outputs
+from distill import fetch_model_outputs
 import models
 try:
     import tensorwatch
@@ -97,9 +97,67 @@ class Trainer(object):
         self.teacher = teacher
         self.teacher_path = teacher_path
         self.teacher_model_config = teacher_model_config
-        # will generate them as needed
-        self.teacher_train_outputs = None
-        self.teacher_val_outputs = None
+        if self.teacher is not None:
+            self.load_teacher_model()
+
+    def load_teacher_model(self):
+        teacher_model = models.__dict__[self.teacher]
+        teacher_config = {'dataset': self.dataset} \
+                         if self.teacher not in ['efficientnet', 'mobilenet'] \
+                            else dict()
+        teacher_config = dict(teacher_config,
+                              **literal_eval(self.teacher_model_config))
+        teacher_model = teacher_model(**teacher_config)
+        teacher_ckpt = torch.load(self.teacher_path)
+        teacher_model.load_state_dict(teacher_ckpt['state_dict'])
+        cuda = 'cuda' in self.device and torch.cuda.is_available()
+        teacher_model.eval()
+        if cuda:
+            teacher_model = teacher_model.to(self.device)
+        self.teacher_model = teacher_model
+
+    def _set_student_and_teacher_outputs(self, train_data_loader, val_data_loader):
+        with torch.no_grad():
+            self.teacher_train_outputs, self.teacher_train_activations = fetch_model_outputs(
+                self.teacher_model, train_data_loader, device=self.device, return_activations=True)
+            self.teacher_val_outputs, self.teacher_val_activations = fetch_model_outputs(
+                self.teacher_model, val_data_loader, device=self.device, return_activations=True)
+            self.student_train_outputs, self.student_train_activations = fetch_model_outputs(
+                self.model, train_data_loader, device=self.device, return_activations=True)
+            self.student_val_outputs, self.student_val_activations = fetch_model_outputs(
+                self.model, val_data_loader, device=self.device, return_activations=True)
+            train_svd = torch.svd(self.teacher_train_activations)
+            val_svd = torch.svd(self.teacher_val_activations)
+            self.teacher_train_U = train_svd.U
+            self.teacher_val_U = val_svd.U
+            # we use eos_scale to scale the EOS loss during training, so that the same learning rates that were
+            # good for MSE loss are also good for EOS loss.
+            self.eos_scale = torch.norm(self.teacher_train_activations) / torch.norm(self.teacher_train_U)
+
+    def get_teacher_output(self, training=False, curr_index=0, chunk_size=0):
+        full_outputs = self.teacher_train_outputs if training else self.teacher_val_outputs
+        full_activations = self.teacher_train_activations if training else self.teacher_val_activations
+        curr_outputs = full_outputs[curr_index:curr_index+chunk_size,:]
+        curr_activations = full_activations[curr_index:curr_index+chunk_size,:]
+        return curr_outputs, curr_activations
+
+    def update_student_outputs(self, output, activations, training=False, curr_index=0, chunk_size=0):
+        full_outputs = self.student_train_outputs if training else self.student_val_outputs
+        full_activations = self.student_train_activations if training else self.student_val_activations
+        full_outputs[curr_index:curr_index+chunk_size,:] = output
+        full_activations[curr_index:curr_index+chunk_size,:] = activations
+
+    def update_P(self):
+        with torch.no_grad():
+            X = self.student_train_activations
+            self.P = torch.pinverse(X.t() @ X) @ X.t() @ self.teacher_train_activations
+
+    def compute_eos(self, training=False):
+        teacher_U = self.teacher_train_U if training else self.teacher_val_U
+        student_activations = self.student_train_activations if training else self.student_val_activations
+        student_svd = torch.svd(student_activations)
+        student_U = student_svd.U
+        torch.norm(student_U.t() @ teacher_U)**2 / teacher_U.shape[1]
 
     def _grad_norm(self, inputs_batch, target_batch, chunk_batch=1):
         self.model.zero_grad()
@@ -119,46 +177,13 @@ class Trainer(object):
         grad = clip_grad_norm_(self.model.parameters(), float('inf'))
         return grad
 
-    def _get_teacher_outputs(self, data_loader, training=False):
-        teacher_model = models.__dict__[self.teacher]
-        teacher_config = {'dataset': self.dataset} \
-                         if self.teacher not in ['efficientnet', 'mobilenet'] \
-                            else dict()
-        teacher_config = dict(teacher_config,
-                              **literal_eval(self.teacher_model_config))
-        teacher_model = teacher_model(**teacher_config)
-        teacher_ckpt = torch.load(self.teacher_path)
-        teacher_model.load_state_dict(teacher_ckpt['state_dict'])
-        if training:
-            self.teacher_train_outputs = \
-                fetch_teacher_outputs(teacher_model,
-                                      data_loader,
-                                      self.teacher_path,
-                                      self.dataset,
-                                      train=True,
-                                      device=self.device)
-        else:
-            self.teacher_val_outputs = \
-                fetch_teacher_outputs(teacher_model,
-                                      data_loader,
-                                      self.teacher_path,
-                                      self.dataset,
-                                      train=False,
-                                      device=self.device)
-
-    def _step(self, inputs_batch, target_batch, training=False,
-              teacher_batch=None, average_output=False, chunk_batch=1):
+    def _step(self, inputs_batch, target_batch, training=False, average_output=False, chunk_batch=1, curr_index=0):
         outputs = []
         total_loss = 0
 
         if training:
             self.optimizer.zero_grad()
             self.optimizer.update(self.epoch, self.training_steps)
-
-        if teacher_batch is not None:
-            teacher_chunks = teacher_batch.chunk(chunk_batch, dim=0)
-        else:
-            teacher_chunks = None
 
         for i, (inputs, target) in enumerate(zip(inputs_batch.chunk(chunk_batch, dim=0),
                                                  target_batch.chunk(chunk_batch, dim=0))):
@@ -178,11 +203,7 @@ class Trainer(object):
                     inputs = input_mixup(inputs)
 
             # compute output
-            output = self.model(inputs)
-            if teacher_chunks is not None:
-                teacher_output = teacher_chunks[i].to(self.device)
-            else:
-                teacher_output = None
+            output,activations = self.model.forward(inputs, return_activations=True)
 
             if mixup is not None:
                 target = mixup.mix_target(target, output.size(-1))
@@ -194,8 +215,14 @@ class Trainer(object):
                 else:
                     output = _average_duplicates(output, target)
                     
-            if teacher_output is not None:
-                loss = self.criterion(output, target, teacher_output)
+            if self.teacher is not None:
+                chunk_size = inputs.shape[0]
+                teacher_output,teacher_activations = self.get_teacher_output(training=training, curr_index=curr_index, chunk_size=chunk_size)
+                self.update_student_outputs(output, activations, training=training, curr_index=curr_index, chunk_size=chunk_size)
+                if curr_index % 1000 < chunk_size and training:
+                    self.update_P()
+                loss = self.criterion(output, activations, teacher_output, teacher_activations, self.P, self.eos_scale, target)
+                curr_index += chunk_size
             else:
                 loss = self.criterion(output, target)
             grad = None
@@ -234,12 +261,6 @@ class Trainer(object):
         return outputs, total_loss, grad
 
     def forward(self, data_loader, num_steps=None, training=False, average_output=False, chunk_batch=1):
-
-        teacher_outputs = self.teacher_train_outputs if training else \
-            self.teacher_val_outputs
-        if self.teacher is not None and teacher_outputs is None:
-                self._get_teacher_outputs(data_loader, training=training)
-
         meters = {name: AverageMeter()
                   for name in ['step', 'data', 'loss', 'prec1', 'prec5']}
         if training and self.grad_clip > 0:
@@ -255,8 +276,8 @@ class Trainer(object):
             results['error5'] = 100. - results['prec5']
             return results
 
+        curr_index = 0
         end = time.time()
-
         for i, (inputs, target) in enumerate(data_loader):
             duplicates = inputs.dim() > 4  # B x D x C x H x W
             if training and duplicates and self.adapt_grad_norm is not None \
@@ -277,21 +298,12 @@ class Trainer(object):
                 inputs, target = _flatten_duplicates(inputs, target, batch_first,
                                                      expand_target=not average_output)
 
-            if self.teacher is not None:
-                if training:
-                    teacher_output = \
-                        torch.from_numpy(self.teacher_train_outputs[i])
-                else:
-                    teacher_output = \
-                        torch.from_numpy(self.teacher_val_outputs[i])
-            else:
-                teacher_output=None
-                    
             output, loss, grad = self._step(inputs, target,
                                             training=training,
                                             average_output=average_output,
-                                            teacher_batch=teacher_output,
-                                            chunk_batch=chunk_batch)
+                                            chunk_batch=chunk_batch,
+                                            curr_index=curr_index)
+            curr_index += inputs.shape[0]
 
             # measure accuracy and record loss
             prec1, prec5 = accuracy(output, target, topk=(1, 5))
@@ -333,7 +345,10 @@ class Trainer(object):
             if num_steps is not None and i >= num_steps:
                 break
 
-        return meter_results(meters)
+        results = meter_results(meters)
+        # Add EOS result
+        results['eos'] = self.compute_eos(training=training)
+        return results
 
     def train(self, data_loader, average_output=False, chunk_batch=1):
         # switch to train mode

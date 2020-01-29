@@ -1,3 +1,4 @@
+import numpy as np
 import pathlib
 import helpers
 
@@ -91,6 +92,62 @@ def cmds_1_21_20_tune_kd_models():
                             teacher_model, teacher_model_config, teacher_path, student_model, student_model_config,
                             rungroup, loss, alpha, lr, temp_str
                         ))
+
+def cmds_1_28_20_train_eos_models():
+    filename = get_cmdfile_path('1_28_20_train_eos_models_cmds')
+    cmd_format_str = ('qsub -V -b y -wd /proj/distill/wd -v '
+                      'cmd="python /proj/distill/git/convNet.pytorch/main.py '
+                      '--results-dir {} --datasets-dir {} --dataset {} --input-size {} --dtype {} --autoaugment '
+                      '--device cuda --epochs {} --batch-size {} --weight-decay {} --print-freq 10 --seed {} '
+                      '--teacher {} --teacher-model-config {} --teacher-path {} --model {} --model-config {} '
+                      '--no-shuffle --rungroup-name {} --distill-loss {} --alpha {} --beta {} --lr {}" '
+                      '/proj/distill/git/convNet.pytorch/ml_env.sh\n')
+    results_dir = '/proj/distill/results'
+    data_dir = '/proj/distill/data'
+    dataset = 'cifar100'
+    teacher_model = 'resnet'
+    teacher_model_config = '\'{\\"groups\\": [1,1,1,1], \\"depth\\": 18, \\"width\\": [64, 128, 256, 512]}\''
+    teacher_path = '/proj/distill/results/resnet18_1_16_20/checkpoint.pth.tar'
+    student_model = 'mobilenet'
+    student_model_config = '\'{\\"num_classes\\": 100, \\"cifar\\": True}\''
+    input_size = 32
+    dtype = 'float'
+    epochs = 170
+    batch_size = 128
+    weight_decay = 5e-4
+    seed = 1
+    rungroup = 'trainEOS'
+    lrs = [0.3] # 1
+    losses = ['eos'] # 1
+    ratios = [(1,1,1),
+              (2,1,1),(8,1,1),
+              (1,2,1),(1,8,1),
+              (1,1,2),(1,1,8),
+              (1,1,0),
+              (3,1,0),(9,1,0),
+              (1,3,0),(1,9,0),
+              (1,0,1),
+              (3,0,1),(9,0,1),
+              (1,0,3),(1,0,9),
+              (0,1,1),
+              (0,3,1),(0,9,1),
+              (0,1,3),(0,1,9),
+              (1,0,0),(0,1,0),(0,0,1)] # 25
+
+    with open(filename,'w') as f:
+        for loss in losses:
+            for ratio in ratios:
+                ratio_sum = np.sum(ratio)
+                alpha = ratio[0]/ratio_sum # weight on MSE loss
+                beta = ratio[1]/ratio_sum # weight on EOS loss
+                # 1-alpha-beta weight gets put on CE loss
+                for lr in lrs:
+                    f.write(cmd_format_str.format(
+                        results_dir, data_dir, dataset, input_size, dtype,
+                        epochs, batch_size, weight_decay, seed,
+                        teacher_model, teacher_model_config, teacher_path, student_model, student_model_config,
+                        rungroup, loss, alpha, beta, lr
+                    ))
 
 if __name__ == '__main__':
     # cmds_1_16_20_train_base_models()

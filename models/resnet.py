@@ -206,11 +206,13 @@ class ResNet(nn.Module):
         x = self.avgpool(x)
         return x.view(x.size(0), -1)
 
-    def forward(self, x):
-        x = self.features(x)
-        x = self.fc(x)
-        return x
-
+    def forward(self, x, return_activations=False):
+        last_hidden = self.features(x)
+        output = self.fc(last_hidden)
+        if return_activations:
+            return output, last_hidden
+        else:
+            return output
 
 class ResNet_imagenet(ResNet):
     num_train_images = 1281167

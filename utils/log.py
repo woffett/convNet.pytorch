@@ -81,10 +81,13 @@ def get_runname(parser, config, full=False):
     required = (
         'distill_loss',
         'alpha',
-        'temperature'
+        'beta',
+        #'temperature'
     )
+    for key in required:
+        runname += '{},{}_'.format(key, config[key])
     for key, val in non_default_args(parser, config):
-        if (key not in to_skip) or (key in required):
+        if key not in (to_skip + required):
             runname += '{},{}_'.format(key, val)
     # remove the final '_' from runname
     if full:
@@ -363,9 +366,11 @@ def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
     train_prec1 = []
     train_prec5 = []
     train_loss = []    
+    train_eos = []
     val_prec1 = []
     val_prec5 = []
     val_loss = []
+    val_eos = []
 
     results_filename = os.path.join(save_path, runname + '_results.csv')
     with open(results_filename) as fp:
@@ -374,22 +379,33 @@ def gen_results_json(args, save_path, best_prec1, best_prec5, runname):
             train_prec1.append(float(row['training prec1']))
             train_prec5.append(float(row['training prec5']))
             train_loss.append(float(row['training loss']))
+            train_eos.append(float(row['training eos']))
             val_prec1.append(float(row['validation prec1']))
             val_prec5.append(float(row['validation prec5']))
             val_loss.append(float(row['validation loss']))
+            val_eos.append(float(row['validation eos']))
 
     results_dict = dict()
     results_dict['train_prec1'] = train_prec1
     results_dict['train_prec5'] = train_prec5
     results_dict['train_loss'] = train_loss
+    results_dict['train_eos'] = train_eos
     results_dict['val_prec1'] = val_prec1
     results_dict['val_prec5'] = val_prec5
     results_dict['val_loss'] = val_loss
+    results_dict['val_eos'] = val_eos
 
+    # save final/best prec results
     results_dict['final_prec1'] = float(row['validation prec1'])
     results_dict['final_prec5'] = float(row['validation prec5'])
     results_dict['best_prec1'] = best_prec1
     results_dict['best_prec5'] = best_prec5
+
+    # save final/best eos results
+    results_dict['final_train_eos'] = train_eos[-1]
+    results_dict['final_val_eos'] = val_eos[-1]
+    results_dict['best_train_eos'] = max(train_eos)
+    results_dict['best_val_eos'] = max(val_eos)
 
     master_dict['results'] = results_dict
 
