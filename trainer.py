@@ -137,9 +137,11 @@ class Trainer(object):
     def get_teacher_output(self, training=False, curr_index=0, chunk_size=0):
         full_outputs = self.teacher_train_outputs if training else self.teacher_val_outputs
         full_activations = self.teacher_train_activations if training else self.teacher_val_activations
+        full_U = self.teacher_train_U if training else self.teacher_val_U
         curr_outputs = full_outputs[curr_index:curr_index+chunk_size,:]
         curr_activations = full_activations[curr_index:curr_index+chunk_size,:]
-        return curr_outputs, curr_activations
+        curr_U = full_U[curr_index:curr_index+chunk_size,:]
+        return curr_outputs, curr_activations, curr_U
 
     def update_student_outputs(self, output, activations, training=False, curr_index=0, chunk_size=0):
         full_outputs = self.student_train_outputs if training else self.student_val_outputs
@@ -150,7 +152,7 @@ class Trainer(object):
     def update_P(self):
         with torch.no_grad():
             X = self.student_train_activations
-            self.P = torch.pinverse(X.t() @ X) @ X.t() @ self.teacher_train_activations
+            self.P = torch.pinverse(X.t() @ X) @ X.t() @ self.teacher_train_U
 
     def compute_eos(self, training=False):
         teacher_U = self.teacher_train_U if training else self.teacher_val_U
@@ -217,11 +219,11 @@ class Trainer(object):
                     
             if self.teacher is not None:
                 chunk_size = inputs.shape[0]
-                teacher_output,teacher_activations = self.get_teacher_output(training=training, curr_index=curr_index, chunk_size=chunk_size)
+                teacher_output,_,teacher_U = self.get_teacher_output(training=training, curr_index=curr_index, chunk_size=chunk_size)
                 self.update_student_outputs(output, activations, training=training, curr_index=curr_index, chunk_size=chunk_size)
                 if curr_index % 1000 < chunk_size and training:
                     self.update_P()
-                loss = self.criterion(output, activations, teacher_output, teacher_activations, self.P, self.eos_scale, target)
+                loss = self.criterion(output, activations, teacher_output, teacher_U, self.P, self.eos_scale, target)
                 curr_index += chunk_size
             else:
                 loss = self.criterion(output, target)
