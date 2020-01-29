@@ -151,4 +151,5 @@ def cmds_1_28_20_train_eos_models():
 
 if __name__ == '__main__':
     # cmds_1_16_20_train_base_models()
-    cmds_1_21_20_tune_kd_models()
+    # cmds_1_21_20_tune_kd_models()
+    cmds_1_28_20_train_eos_models()

@@ -85,10 +85,13 @@ def get_runname(parser, config, full=False):
         #'temperature'
     )
     for key in required:
-        runname += '{},{}_'.format(key, config[key])
+        val = config[key]
+        format_str = '{},{:.3g}_' if type(val) is float else '{},{}_'
+        runname += format_str.format(key, val)
     for key, val in non_default_args(parser, config):
         if key not in (to_skip + required):
-            runname += '{},{}_'.format(key, val)
+            format_str = '{},{:.3g}_' if type(val) is float else '{},{}_'
+            runname += format_str.format(key, val)
     # remove the final '_' from runname
     if full:
         runname = 'rungroup,' + config['rungroup_name'] + '_' + runname
