@@ -223,6 +223,12 @@ class EfficientNet(nn.Module):
 
         if rewire_frac is not None:
             self.regime[0]['rewire_frac'] = rewire_frac
+            # hardcode for now
+            self.regime[0]['rewire_period'] = 100
+            self.regime.append({'epoch': 25, 'rewire_period': 200})
+            self.regime.append({'epoch': 80, 'rewire_period': 400})
+            self.regime.append({'epoch': 140, 'rewire_period': 800})
+            self.regime.append({'epoch': 190, 'rewire_period': 0})
 
         self.data_regime = [{'input_size': resolution, 'autoaugment': True}]
         self.data_eval_regime = [{'input_size': resolution,

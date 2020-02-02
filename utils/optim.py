@@ -113,11 +113,14 @@ class OptimRegime(Regime):
         self.lr_scheduler = _EmptySchedule(self.optimizer, last_epoch=-1)
         self.schedule_time_frame = 'epoch'
         self.log = log
-
-        if hasattr(model, "sparse") and model.sparse:
-            rewire_frac = regime[0].get('rewire_frac', None)
+        self.model = model
+        self.sparse = hasattr(model, 'sparse') and model.sparse
+        self.rewire_frac = None
+        if self.sparse:
+            self.rewire_frac = regime[0].get('rewire_frac', None)
             self.optimizer = SparseOptimizer(self.optimizer, model,
-                                             rewire_frac=rewire_frac)
+                                             rewire_frac=self.rewire_frac,
+                                             verbose_level=2)
 
     def update(self, epoch=None, train_steps=None, metrics=None):
         """adjusts optimizer according to current epoch or steps and training regime.
@@ -152,6 +155,8 @@ class OptimRegime(Regime):
         reset = setting.get('reset', False)
         if 'optimizer' in setting or reset:
             optim_method = _OPTIMIZERS[setting.get('optimizer', 'SGD')]
+            if self.sparse: # save the previous sparse threshold
+                threshold = self.optimizer.threshold
             if reset:  # reset the optimizer cache:
                 self.optimizer = torch.optim.SGD(self.parameters, lr=0)
                 if self.log:
@@ -161,6 +166,11 @@ class OptimRegime(Regime):
                 if self.log:
                     logging.debug('OPTIMIZER - setting method = %s' %
                                   setting['optimizer'])
+            if self.sparse:
+                self.rewire_frac = setting.get('rewire_frac', self.rewire_frac)
+                self.optimizer = SparseOptimizer(self.optimizer, self.model,
+                                                 rewire_frac=self.rewire_frac,
+                                                 start_threshold=threshold)
         for param_group in self.optimizer.param_groups:
             for key in param_group.keys():
                 if key in setting:
@@ -212,6 +222,10 @@ class OptimRegime(Regime):
                                                    last_epoch=self.lr_scheduler.last_epoch)
             else:  # invalid config
                 raise NotImplementedError
+
+        if 'rewire_period' in setting:
+            logging.info('Setting rewire period = %.4f' % setting['rewire_period'])
+            self.optimizer.rewire_period = setting['rewire_period']
 
     def __getstate__(self):
         return {
