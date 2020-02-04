@@ -119,8 +119,7 @@ class OptimRegime(Regime):
         if self.sparse:
             self.rewire_frac = regime[0].get('rewire_frac', None)
             self.optimizer = SparseOptimizer(self.optimizer, model,
-                                             rewire_frac=self.rewire_frac,
-                                             verbose_level=2)
+                                             rewire_frac=self.rewire_frac)
 
     def update(self, epoch=None, train_steps=None, metrics=None):
         """adjusts optimizer according to current epoch or steps and training regime.
@@ -156,21 +155,24 @@ class OptimRegime(Regime):
         if 'optimizer' in setting or reset:
             optim_method = _OPTIMIZERS[setting.get('optimizer', 'SGD')]
             if self.sparse: # save the previous sparse threshold
-                threshold = self.optimizer.threshold
+                self.rewire_frac = setting.get('rewire_frac', self.rewire_frac)
+                self.optimizer.rewire_frac = self.rewire_frac
             if reset:  # reset the optimizer cache:
-                self.optimizer = torch.optim.SGD(self.parameters, lr=0)
+                if self.sparse:
+                    self.optimizer.optimizer = torch.optim.SGD(self.parameters, lr=0)
+                else:
+                    self.optimizer = torch.optim.SGD(self.parameters, lr=0)
                 if self.log:
                     logging.debug('OPTIMIZER - reset setting')
             if not isinstance(self.optimizer, optim_method):
-                self.optimizer = optim_method(self.optimizer.param_groups)
+                if self.sparse:
+                    self.optimizer.optimizer = optim_method(self.optimizer.param_groups)
+                else:
+                    self.optimizer = optim_method(self.optimizer.param_groups)
                 if self.log:
                     logging.debug('OPTIMIZER - setting method = %s' %
                                   setting['optimizer'])
-            if self.sparse:
-                self.rewire_frac = setting.get('rewire_frac', self.rewire_frac)
-                self.optimizer = SparseOptimizer(self.optimizer, self.model,
-                                                 rewire_frac=self.rewire_frac,
-                                                 start_threshold=threshold)
+                
         for param_group in self.optimizer.param_groups:
             for key in param_group.keys():
                 if key in setting:
